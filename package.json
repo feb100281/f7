@@ -1,0 +1,16 @@
+{
+  "name": "f7",
+  "version": "1.0.0",
+  "description": "FORMULA7 — хелпер отдела продаж запчастей",
+  "scripts": {
+    "css:watch": "npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/output.css --watch",
+    "css:build": "npx @tailwindcss/cli -i ./static/css/input.css -o ./static/css/output.css --minify"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@tailwindcss/cli": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+  },
+  "private": true
+}

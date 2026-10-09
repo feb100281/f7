@@ -1,0 +1,54 @@
+{% extends "sales/dashboards/base.html" %}
+{% load f7_format %}
+
+{% block dash %}
+{% include "sales/dashboards/_kpis.html" %}
+
+<div class="f7-grid-2">
+    <div class="f7-card">
+        <div class="f7-card-title">Выручка по месяцам</div>
+        {% include "sales/dashboards/_chart.html" with chart=chart_trend type="line" %}
+    </div>
+    <div class="f7-card">
+        <div class="f7-card-title">Выручка по каналам</div>
+        {% include "sales/dashboards/_chart.html" with chart=chart_kinds type="bar" %}
+    </div>
+</div>
+
+<div class="f7-grid-2">
+    <div class="f7-card">
+        <div class="f7-card-title">Каналы продаж</div>
+        <table class="f7-table f7-table-dash">
+            <thead><tr><th>Канал</th><th class="f7-right">Выручка, ₽</th><th class="f7-right">Доля</th><th class="f7-right">Маржа</th><th class="f7-right">Документов</th><th class="f7-right">К прошлому году</th></tr></thead>
+            <tbody>
+            {% for k in kinds_table %}
+                <tr>
+                    <td><span class="f7-dot" style="background: {{ k.color }}"></span>{{ k.label }}</td>
+                    <td class="f7-right">{{ k.revenue|rub }}</td>
+                    <td class="f7-right">{{ k.share|pct }}</td>
+                    <td class="f7-right">{{ k.margin|pct:0 }}</td>
+                    <td class="f7-right">{{ k.docs|num }}</td>
+                    <td class="f7-right">{{ k.yoy|delta }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% if no_revenue_share %}<div class="f7-note">Строк без выручки (гарантия, внутренние наряды): {{ no_revenue_share|pct }}</div>{% endif %}
+    </div>
+    <div class="f7-card">
+        <div class="f7-card-title">Крупнейшие товарные группы</div>
+        <table class="f7-table f7-table-dash">
+            <thead><tr><th>Группа</th><th class="f7-right">Выручка, ₽</th><th style="width: 40%">Доля</th></tr></thead>
+            <tbody>
+            {% for g in top_groups %}
+                <tr>
+                    <td><a href="{% url 'sales_dashboard_groups' %}?{{ request.GET.urlencode }}&group={{ g.id }}">{{ g.name }}</a></td>
+                    <td class="f7-right">{{ g.revenue|rub }}</td>
+                    <td><div class="f7-bar"><span style="width: {% widthratio g.share 1 100 %}%"></span><em>{{ g.share|pct }}</em></div></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,35 @@
+.env
+/.tmp/
+/.tmp_pkgs/
+/venv/
+/.venv/
+.venv/
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+.DS_Store?
+._*
+*.xlsx
+*.xls
+*.csv
+*.parquet
+*.zip
+*.bak
+
+# ========================================
+# Django
+# ========================================
+db.sqlite3
+db.sqlite3-*
+media/
+staticfiles/
+/data/
+
+# ========================================
+# Node (Tailwind)
+# ========================================
+node_modules/

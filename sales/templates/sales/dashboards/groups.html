@@ -1,0 +1,79 @@
+{% extends "sales/dashboards/base.html" %}
+{% load f7_format %}
+
+{% block filters_extra %}
+<label>
+    <span>Тип спроса</span>
+    <select name="demand">
+        <option value="">Все</option>
+        {% for code, name in demand_choices %}<option value="{{ code }}"{% if code == demand %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+</label>
+{% if detail %}<input type="hidden" name="group" value="{{ detail.group.id }}">{% endif %}
+{% endblock %}
+
+{% block dash %}
+
+{% if detail %}
+<div class="f7-card f7-card-accent">
+    <div class="f7-card-title">
+        {{ detail.group.name }} <span class="f7-muted">· {{ detail.group.get_demand_type_display }}</span>
+        <a class="f7-card-link" href="{{ detail.items_url }}">все артикулы группы →</a>
+        <a class="f7-card-link" href="?{% for k, v in request.GET.items %}{% if k != 'group' %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}">закрыть ✕</a>
+    </div>
+    <div class="f7-grid-2">
+        <div>{% include "sales/dashboards/_chart.html" with chart=detail.chart type="line" height=260 %}</div>
+        <div class="f7-scroll">
+            <table class="f7-table f7-table-dash">
+                <thead><tr><th>Артикул</th><th class="f7-right">Выручка, ₽</th><th class="f7-right">Кол-во</th><th class="f7-right">Док.</th></tr></thead>
+                <tbody>
+                {% for it in detail.items %}
+                    <tr>
+                        <td><a href="{% url 'admin:catalog_item_change' it.item_id %}">{{ it.item__article }}</a> <span class="f7-muted f7-ellipsis">{{ it.item__name }}</span></td>
+                        <td class="f7-right">{{ it.revenue|rub }}</td>
+                        <td class="f7-right">{{ it.qty|num }}</td>
+                        <td class="f7-right">{{ it.docs|num }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="f7-grid-2">
+    <div class="f7-card">
+        <div class="f7-card-title">Топ-12 групп по выручке</div>
+        {% include "sales/dashboards/_chart.html" with chart=chart_top type="bar" height=340 %}
+    </div>
+    <div class="f7-card">
+        <div class="f7-card-title">Выручка по типам спроса</div>
+        {% include "sales/dashboards/_chart.html" with chart=chart_demand type="doughnut" height=340 %}
+    </div>
+</div>
+
+<div class="f7-card">
+    <div class="f7-card-title">Все группы · {{ total.revenue|rub }} ₽ <span class="f7-muted">— нажмите на группу, чтобы увидеть динамику и артикулы</span></div>
+    <table class="f7-table f7-table-dash">
+        <thead><tr>
+            <th>Группа</th><th>Тип спроса</th><th class="f7-right">Выручка, ₽</th><th style="width: 18%">Доля</th>
+            <th class="f7-right">Маржа</th><th class="f7-right">Кол-во</th><th class="f7-right">Строк</th><th class="f7-right">К прошлому году</th>
+        </tr></thead>
+        <tbody>
+        {% for r in rows %}
+            <tr{% if detail and detail.group.id == r.id %} class="is-selected"{% endif %}>
+                <td><a href="?{% for k, v in request.GET.items %}{% if k != 'group' %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}group={{ r.id }}">{{ r.name }}</a></td>
+                <td class="f7-muted">{{ r.demand }}</td>
+                <td class="f7-right">{{ r.revenue|rub }}</td>
+                <td><div class="f7-bar"><span style="width: {% widthratio r.share 1 100 %}%"></span><em>{{ r.share|pct }}</em></div></td>
+                <td class="f7-right">{{ r.margin|pct:0 }}</td>
+                <td class="f7-right">{{ r.qty|num }}</td>
+                <td class="f7-right">{{ r.lines|num }}</td>
+                <td class="f7-right">{{ r.yoy|delta }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "sales/dashboards/base.html" %}
+
+{% block dash %}
+<div class="f7-callout f7-callout-warn">
+    <span class="material-symbols-outlined">database</span>
+    <div>
+        <b>Витрины ещё не построены.</b> Загрузите продажи («Импорт продаж из 1С») или запустите
+        «Пересчитать витрины» — дашборды читают только витрины.
+    </div>
+    {% if rebuild_url %}<a href="{{ rebuild_url }}" class="f7-btn f7-btn-red">Пересчитать витрины</a>{% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% load f7_format %}
+<div class="f7-kpis">
+    {% for k in kpis %}
+        <div class="f7-kpi">
+            <div class="f7-kpi-title">{{ k.title }}</div>
+            <div class="f7-kpi-value">
+                {% if k.fmt == "mln" %}{{ k.value|mln }}{% elif k.fmt == "dec" %}{{ k.value|num:2 }}{% else %}{{ k.value|num }}{% endif %}
+            </div>
+            <div class="f7-kpi-foot">
+                {% if k.yoy is not None %}{{ k.yoy|delta }} <span class="f7-muted">к прошлому году</span>{% endif %}
+                {% if k.sub is not None %}
+                    <span class="f7-kpi-sub">{% if k.sub_fmt == "rub" %}{{ k.sub|rub }}{% else %}{{ k.sub|pct }}{% endif %} {{ k.sub_label }}</span>
+                {% endif %}
+            </div>
+        </div>
+    {% endfor %}
+</div>

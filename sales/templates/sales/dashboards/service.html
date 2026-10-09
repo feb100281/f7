@@ -1,0 +1,64 @@
+{% extends "sales/dashboards/base.html" %}
+{% load f7_format %}
+
+{% block dash %}
+{% include "sales/dashboards/_kpis.html" %}
+
+<div class="f7-grid-2">
+    <div class="f7-card">
+        <div class="f7-card-title">Нарядов по месяцам</div>
+        {% include "sales/dashboards/_chart.html" with chart=chart_orders type="bar" %}
+    </div>
+    <div class="f7-card">
+        <div class="f7-card-title">Расходников на наряд, шт.</div>
+        {% include "sales/dashboards/_chart.html" with chart=chart_norm type="line" %}
+    </div>
+</div>
+
+<div class="f7-card">
+    <div class="f7-card-title">Наряды по салонам</div>
+    <table class="f7-table f7-table-dash">
+        <thead><tr>
+            <th>Салон</th><th class="f7-right">Нарядов</th><th style="width: 18%">Доля</th><th class="f7-right">Позиций на наряд</th>
+            <th class="f7-right">Расходников на наряд</th><th class="f7-right">Без выручки</th><th class="f7-right">Выручка, ₽</th><th class="f7-right">К прошлому году</th>
+        </tr></thead>
+        <tbody>
+        {% for r in by_dept %}
+            <tr>
+                <td>{{ r.name }}</td>
+                <td class="f7-right">{{ r.orders|num }}</td>
+                <td><div class="f7-bar"><span style="width: {% widthratio r.share 1 100 %}%"></span><em>{{ r.share|pct }}</em></div></td>
+                <td class="f7-right">{{ r.lines_per|num:2 }}</td>
+                <td class="f7-right">{{ r.cons_per|num:2 }}</td>
+                <td class="f7-right">{{ r.no_rev|pct:0 }}</td>
+                <td class="f7-right">{{ r.revenue|rub }}</td>
+                <td class="f7-right">{{ r.yoy|delta }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="f7-card">
+    <div class="f7-card-title">Что уходит в наряды <span class="f7-muted">— топ-30 артикулов по числу нарядов за период; норма = кол-во / все наряды периода</span></div>
+    <table class="f7-table f7-table-dash">
+        <thead><tr>
+            <th>Артикул</th><th>Группа</th><th class="f7-right">Нарядов</th><th class="f7-right">В доле нарядов</th>
+            <th class="f7-right">Кол-во</th><th class="f7-right">На наряд с ним</th><th class="f7-right">Норма на 100 нарядов</th>
+        </tr></thead>
+        <tbody>
+        {% for it in items %}
+            <tr>
+                <td><a href="{% url 'admin:catalog_item_change' it.item_id %}">{{ it.item__article }}</a> <span class="f7-muted f7-ellipsis">{{ it.item__name }}</span></td>
+                <td class="f7-muted">{{ it.item__group__name|default:"—" }}</td>
+                <td class="f7-right">{{ it.orders|num }}</td>
+                <td class="f7-right">{{ it.share|pct }}</td>
+                <td class="f7-right">{{ it.qty|num:1 }}</td>
+                <td class="f7-right">{{ it.per_order|num:2 }}</td>
+                <td class="f7-right"><b>{% widthratio it.norm 1 100 %}</b></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

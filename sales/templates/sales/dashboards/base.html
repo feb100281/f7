@@ -1,0 +1,79 @@
+{% extends "admin/base.html" %}
+{% load i18n f7_format %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}{% endblock %}
+
+{% block content %}
+<div class="f7-dash">
+
+    {# --- шапка: вкладки дашбордов + свежесть данных #}
+    <div class="f7-dash-head">
+        <nav class="f7-dash-tabs">
+            {% for slug, name, icon, url in dashboards %}
+                <a href="{{ url }}{% if f %}?{{ request.GET.urlencode }}{% endif %}" class="f7-dash-tab{% if slug == current %} is-active{% endif %}">
+                    <span class="material-symbols-outlined">{{ icon }}</span>{{ name }}
+                </a>
+            {% endfor %}
+        </nav>
+        {% if meta %}
+            <div class="f7-dash-meta">
+                данные по {{ meta.last_date|date:"d.m.Y" }} · витрины пересчитаны {{ meta.built|date:"d.m.Y H:i" }}
+                {% if rebuild_url %}<a href="{{ rebuild_url }}" class="f7-dash-meta-btn"><span class="material-symbols-outlined">refresh</span>Пересчитать</a>{% endif %}
+            </div>
+        {% endif %}
+    </div>
+
+    {% if meta.stale_items %}
+        <div class="f7-callout f7-callout-warn">
+            <span class="material-symbols-outlined">sync_problem</span>
+            <div>
+                <b>Витрины устарели:</b> после пересчёта изменено артикулов — {{ meta.stale_items }} (например, перенесены между группами).
+                Цифры по группам и сервису пересчитаются после «Пересчитать витрины».
+            </div>
+            {% if rebuild_url %}<a href="{{ rebuild_url }}" class="f7-btn f7-btn-red">Пересчитать</a>{% endif %}
+        </div>
+    {% endif %}
+
+    {# --- фильтры #}
+    {% if f %}
+        <form method="get" class="f7-filters">
+            {% block filters_extra_hidden %}{% endblock %}
+            <label>
+                <span>Период</span>
+                <select name="period" onchange="this.form.querySelector('.f7-custom').style.display = this.value === 'custom' ? 'flex' : 'none'">
+                    {% for code, name in presets %}<option value="{{ code }}"{% if code == f.period.preset %} selected{% endif %}>{{ name }}</option>{% endfor %}
+                </select>
+            </label>
+            <span class="f7-custom" style="display: {% if f.period.preset == 'custom' %}flex{% else %}none{% endif %}">
+                <label><span>с</span><input type="month" name="from" min="{{ first_month }}" max="{{ last_month }}" value="{{ f.period.start|date:'Y-m' }}"></label>
+                <label><span>по</span><input type="month" name="to" min="{{ first_month }}" max="{{ last_month }}" value="{{ f.period.end|date:'Y-m' }}"></label>
+            </span>
+            <label>
+                <span>Салон</span>
+                <select name="dept">
+                    <option value="">Все</option>
+                    {% for d in departments %}<option value="{{ d.id }}"{% if d.id == f.dept %} selected{% endif %}>{{ d }}</option>{% endfor %}
+                </select>
+            </label>
+            {% if use_kind %}
+                <label>
+                    <span>Канал</span>
+                    <select name="kind">
+                        <option value="">Все</option>
+                        {% for code, name in kinds %}<option value="{{ code }}"{% if code == f.kind %} selected{% endif %}>{{ name }}</option>{% endfor %}
+                    </select>
+                </label>
+            {% endif %}
+            {% block filters_extra %}{% endblock %}
+            <button type="submit" class="f7-btn f7-btn-red">Показать</button>
+            <span class="f7-filters-period">
+                {{ f.period.label }}{% if f.period.has_prev %} · сравнение с {{ f.period.prev_label }}{% else %} · сравнения с прошлым годом нет{% endif %}
+            </span>
+        </form>
+    {% endif %}
+
+    {% block dash %}{% endblock %}
+</div>
+{% endblock %}

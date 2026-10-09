@@ -1,0 +1,172 @@
+{% extends 'admin/base.html' %}
+
+{% load i18n unfold %}
+
+{% block title %}
+    {% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}
+{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="f7-home">
+
+    {# --- приветствие --- #}
+    <div class="f7-hero">
+        <div class="f7-hero-mark">FORMULA<span>7</span></div>
+        <div class="f7-hero-kicker">Запчасти для лодок и моторов · отдел продаж</div>
+        <h1 class="f7-hero-title">
+            Добро пожаловать,
+            <span class="f7-hero-accent">{{ request.user.first_name|default:request.user.username }}</span>!
+        </h1>
+        <p class="f7-hero-sub">
+            Рабочее место менеджера: номенклатура и товарные группы, статистика продаж,
+            дальше — прогноз спроса и матрица must have.
+        </p>
+        <div class="f7-hero-actions">
+            <a href="{{ links.jobs }}" class="f7-btn f7-btn-red">
+                <span class="material-symbols-outlined">wand_shine</span>Команды
+            </a>
+            <a href="{{ links.groups }}" class="f7-btn f7-btn-light">
+                <span class="material-symbols-outlined">category</span>Товарные группы
+            </a>
+        </div>
+    </div>
+
+    {# --- сводка --- #}
+    <div class="f7-home-heading">
+        <span class="material-symbols-outlined">monitoring</span>
+        Сводка
+    </div>
+
+    <div class="f7-dash-cards">
+
+        <a href="{{ links.jobs }}" class="f7-dash-card">
+            <div class="f7-dash-card-top">
+                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">wand_shine</span></span>
+                <span class="f7-dash-card-title">Команды</span>
+                <span class="material-symbols-outlined f7-dash-card-arrow">arrow_forward</span>
+            </div>
+            <div class="f7-dash-card-value">{{ jobs.total|default:0 }}</div>
+            <div class="f7-dash-card-sub">задач в списке команд</div>
+            {% if jobs.running %}
+                <span class="f7-chip f7-chip-warn"><span class="material-symbols-outlined">progress_activity</span>выполняется: {{ jobs.running }}</span>
+            {% else %}
+                <span class="f7-chip f7-chip-ok"><span class="material-symbols-outlined">check_circle</span>ничего не выполняется</span>
+            {% endif %}
+        </a>
+
+        <a href="{{ links.jobs }}" class="f7-dash-card">
+            <div class="f7-dash-card-top">
+                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">history</span></span>
+                <span class="f7-dash-card-title">Последний запуск</span>
+                <span class="material-symbols-outlined f7-dash-card-arrow">arrow_forward</span>
+            </div>
+            {% if jobs.last %}
+                <div class="f7-dash-card-value">{{ jobs.last.lastrun|date:"d.m H:i" }}</div>
+                <div class="f7-dash-card-sub">{{ jobs.last.name }} · {{ jobs.last.get_status_display|lower }}</div>
+            {% else %}
+                <div class="f7-dash-card-value">—</div>
+                <div class="f7-dash-card-sub">команды ещё не запускались</div>
+            {% endif %}
+            {% if jobs.failed %}
+                <span class="f7-chip f7-chip-bad"><span class="material-symbols-outlined">error</span>с ошибкой: {{ jobs.failed }}</span>
+            {% else %}
+                <span class="f7-chip f7-chip-ok"><span class="material-symbols-outlined">verified</span>ошибок нет</span>
+            {% endif %}
+        </a>
+
+        <a href="{{ links.groups }}" class="f7-dash-card">
+            <div class="f7-dash-card-top">
+                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">inventory_2</span></span>
+                <span class="f7-dash-card-title">Номенклатура</span>
+                <span class="material-symbols-outlined f7-dash-card-arrow">arrow_forward</span>
+            </div>
+            <div class="f7-dash-card-value">{{ catalog.items|default:0 }}</div>
+            <div class="f7-dash-card-sub">артикулов в {{ catalog.groups|default:0 }} группах · регулярных {{ catalog.regular|default:0 }}</div>
+            {% if catalog.unclassified %}
+                <span class="f7-chip f7-chip-warn"><span class="material-symbols-outlined">help</span>без группы: {{ catalog.unclassified }}</span>
+            {% elif catalog.items %}
+                <span class="f7-chip f7-chip-ok"><span class="material-symbols-outlined">verified</span>все артикулы в группах</span>
+            {% else %}
+                <span class="f7-chip f7-chip-warn"><span class="material-symbols-outlined">upload</span>запустите импорт продаж</span>
+            {% endif %}
+        </a>
+
+        <a href="{{ links.users }}" class="f7-dash-card">
+            <div class="f7-dash-card-top">
+                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">badge</span></span>
+                <span class="f7-dash-card-title">Пользователи</span>
+                <span class="material-symbols-outlined f7-dash-card-arrow">arrow_forward</span>
+            </div>
+            <div class="f7-dash-card-value">{{ users_count }}</div>
+            <div class="f7-dash-card-sub">активных учётных записей</div>
+        </a>
+    </div>
+
+    {% if jobs.recent %}
+        <div class="f7-card">
+            <div class="f7-section-heading">
+                <span class="f7-section-number">↻</span>
+                <span class="f7-section-title">Недавние запуски</span>
+            </div>
+            <table class="f7-table">
+                <tbody>
+                {% for job in jobs.recent %}
+                    <tr>
+                        <td><a href="{% url 'admin:core_jobs_change' job.pk %}">{{ job.name }}</a></td>
+                        <td class="f7-muted">{{ job.command }}</td>
+                        <td><span class="f7-status f7-status-{{ job.status|lower }}">{{ job.get_status_display }}</span></td>
+                        <td class="f7-muted f7-right">{{ job.lastrun|date:"d.m.Y H:i" }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+
+    {# --- разделы --- #}
+    <div class="f7-home-heading">
+        <span class="material-symbols-outlined">apps</span>
+        Рабочие разделы
+    </div>
+
+    <div class="f7-link-cards">
+        {% for icon, title, sub, url in sections %}
+            <a href="{{ url }}" class="f7-link-card">
+                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">{{ icon }}</span></span>
+                <span>
+                    <span class="f7-link-card-title">{{ title }}</span>
+                    <span class="f7-link-card-sub">{{ sub }}</span>
+                </span>
+            </a>
+        {% endfor %}
+        {% for icon, title, sub in roadmap %}
+            <div class="f7-link-card f7-link-card-soon">
+                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">{{ icon }}</span></span>
+                <span>
+                    <span class="f7-link-card-title">{{ title }} <span class="f7-soon">скоро</span></span>
+                    <span class="f7-link-card-sub">{{ sub }}</span>
+                </span>
+            </div>
+        {% endfor %}
+    </div>
+
+    {# --- как это работает --- #}
+    <div class="f7-card">
+        <div class="f7-section-heading">
+            <span class="f7-section-number">⚙</span>
+            <span class="f7-section-title">Как работают команды</span>
+        </div>
+        <ol class="f7-flow">
+            <li><b>Команда</b> — это management-команда Django: <code>python manage.py &lt;команда&gt;</code>.</li>
+            <li><b>Параметры</b> задаются в карточке команды (JSON) — пути к файлам, даты, лимиты.</li>
+            <li><b>Запуск</b> — кнопка «Запустить» в списке: задача идёт в фоне, статус меняется сам.</li>
+            <li><b>Лог</b> — «Открыть лог»: весь вывод команды с отметками старта и результата.</li>
+        </ol>
+    </div>
+
+</div>
+{% endblock %}

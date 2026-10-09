@@ -1,0 +1,39 @@
+{% extends "sales/dashboards/base.html" %}
+{% load f7_format %}
+
+{% block dash %}
+<div class="f7-grid-2">
+    <div class="f7-card">
+        <div class="f7-card-title">Выручка салонов по каналам</div>
+        {% include "sales/dashboards/_chart.html" with chart=chart_mix type="bar" height=300 %}
+    </div>
+    <div class="f7-card">
+        <div class="f7-card-title">Выручка по месяцам · топ-6 салонов</div>
+        {% include "sales/dashboards/_chart.html" with chart=chart_trend type="line" height=300 %}
+    </div>
+</div>
+
+<div class="f7-card">
+    <div class="f7-card-title">Салоны · {{ total|rub }} ₽ <span class="f7-muted">— названия задаются в «Продажи → Подразделения»</span></div>
+    <table class="f7-table f7-table-dash">
+        <thead><tr>
+            <th>Салон</th><th class="f7-right">Выручка, ₽</th><th style="width: 18%">Доля</th><th class="f7-right">Маржа</th>
+            <th class="f7-right">Документов</th><th class="f7-right">Нарядов</th><th class="f7-right">Доля сервиса</th><th class="f7-right">К прошлому году</th>
+        </tr></thead>
+        <tbody>
+        {% for r in rows %}
+            <tr>
+                <td><b>{{ r.prefix }}</b> <span class="f7-muted">{{ r.name }}</span></td>
+                <td class="f7-right">{{ r.revenue|rub }}</td>
+                <td><div class="f7-bar"><span style="width: {% widthratio r.share 1 100 %}%"></span><em>{{ r.share|pct }}</em></div></td>
+                <td class="f7-right">{{ r.margin|pct:0 }}</td>
+                <td class="f7-right">{{ r.docs|num }}</td>
+                <td class="f7-right">{{ r.orders|num }}</td>
+                <td class="f7-right">{{ r.service_share|pct:0 }}</td>
+                <td class="f7-right">{{ r.yoy|delta }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

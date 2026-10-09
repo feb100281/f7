@@ -1,0 +1,51 @@
+{% extends "sales/dashboards/base.html" %}
+{% load f7_format %}
+
+{% block filters_extra %}
+<label>
+    <span>Группа</span>
+    <select name="group">
+        <option value="">Все</option>
+        {% for g in groups_list %}<option value="{{ g.id }}"{% if g.id == group_id %} selected{% endif %}>{{ g.name }}</option>{% endfor %}
+    </select>
+</label>
+<label>
+    <span>Показатель</span>
+    <select name="metric">
+        <option value="qty"{% if metric == "qty" %} selected{% endif %}>Количество</option>
+        <option value="revenue"{% if metric == "revenue" %} selected{% endif %}>Выручка</option>
+    </select>
+</label>
+{% endblock %}
+
+{% block dash %}
+<div class="f7-note f7-note-top">
+    Сезон — октябрь – сентябрь. Профиль считается по всей истории, период выше не применяется.
+    Полные сезоны: {{ full_seasons|join:", "|default:"нет" }}{% if current_seasons %}; неполные (в профиль не входят): {{ current_seasons|join:", " }}{% endif %}.
+</div>
+
+<div class="f7-card">
+    <div class="f7-card-title">Профиль сезона: доля месяца в году, %</div>
+    {% include "sales/dashboards/_chart.html" with chart=chart_profile type="line" height=320 %}
+</div>
+
+<div class="f7-card">
+    <div class="f7-card-title">Сезонность групп <span class="f7-muted">— доля месяца в годовом объёме группы, по полным сезонам; чем краснее, тем ближе к пику</span></div>
+    <div class="f7-scroll-x">
+        <table class="f7-table f7-table-dash f7-heat">
+            <thead><tr><th>Группа</th>{% for m in season_months %}<th class="f7-center">{{ m }}</th>{% endfor %}<th class="f7-center">Пик</th></tr></thead>
+            <tbody>
+            {% for g in heat %}
+                <tr>
+                    <td><a href="?{% for k, v in request.GET.items %}{% if k != 'group' %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}group={{ g.id }}">{{ g.name }}</a></td>
+                    {% for c in g.cells %}
+                        <td class="f7-center" style="background: {{ c.rel|heat }}" title="{{ c.share|pct }}">{% widthratio c.share 1 100 %}</td>
+                    {% endfor %}
+                    <td class="f7-center"><b>{{ g.peak }}</b></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
