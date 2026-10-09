@@ -124,6 +124,33 @@ UNFOLD_SETTINGS = {
                 ],
             },
             {
+                "title": "Прогноз",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "Прогноз выручки",
+                        "icon": "trending_up",
+                        "link": reverse_lazy("forecast_dashboard_overview"),
+                    },
+                    {
+                        "title": "Проверка на прошлом",
+                        "icon": "fact_check",
+                        "link": reverse_lazy("forecast_dashboard_backtest"),
+                    },
+                    {
+                        "title": "Подбор параметров",
+                        "icon": "tune",
+                        "link": reverse_lazy("admin:forecast_tunerun_changelist"),
+                    },
+                    {
+                        "title": "Все прогнозы",
+                        "icon": "history",
+                        "link": reverse_lazy("admin:forecast_forecastrun_changelist"),
+                    },
+                ],
+            },
+            {
                 "title": "Витрины",
                 "separator": True,
                 "collapsible": True,

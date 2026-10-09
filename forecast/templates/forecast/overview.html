@@ -1,0 +1,105 @@
+{% extends "sales/dashboards/base.html" %}
+{% load f7_format %}
+
+{% block dash %}
+{% if not run %}
+    <div class="f7-callout f7-callout-warn">
+        <span class="material-symbols-outlined">trending_up</span>
+        <div>
+            <b>Прогноза ещё нет.</b> Сначала «Подобрать параметры» — модель проверится на прошлых сезонах
+            и сразу построит прогноз. Быстрый вариант без подбора — «Построить прогноз» (Prophet по умолчанию).
+        </div>
+        {% if tune_url %}<a href="{{ tune_url }}" class="f7-btn f7-btn-red">Подобрать параметры</a>{% endif %}
+        {% if build_url %}<a href="{{ build_url }}" class="f7-btn f7-btn-light">Построить прогноз</a>{% endif %}
+    </div>
+{% else %}
+    <form method="get" class="f7-filters">
+        <label>
+            <span>Ряд</span>
+            <select name="series" onchange="this.form.submit()">
+                {% for code, name in series_list %}<option value="{{ code }}"{% if code == series %} selected{% endif %}>{{ name }}</option>{% endfor %}
+            </select>
+        </label>
+        <label>
+            <span>Прогноз</span>
+            <select name="run" onchange="this.form.submit()">
+                {% for r in runs %}<option value="{{ r.pk }}"{% if r.pk == run.pk %} selected{% endif %}>от {{ r.created|date:"d.m.Y H:i" }} · факт по {{ r.data_end|date:"d.m.Y" }}{% if r.note %} · {{ r.note }}{% endif %}</option>{% endfor %}
+            </select>
+        </label>
+        <span class="f7-filters-period">
+            {% if build_url %}<a href="{{ build_url }}" class="f7-dash-meta-btn"><span class="material-symbols-outlined">refresh</span>Построить прогноз</a>{% endif %}
+            {% if tune_url %}<a href="{{ tune_url }}" class="f7-dash-meta-btn"><span class="material-symbols-outlined">tune</span>Подобрать параметры</a>{% endif %}
+        </span>
+    </form>
+
+    {% if stale %}
+        <div class="f7-callout f7-callout-warn">
+            <span class="material-symbols-outlined">update</span>
+            <div><b>Есть новые продажи</b> (по {{ last_date|date:"d.m.Y" }}), а прогноз построен по данным на {{ run.data_end|date:"d.m.Y" }}.
+            Для старого прогноза ниже уже виден факт — удобно сравнить. Для нового — «Построить прогноз».</div>
+            {% if build_url %}<a href="{{ build_url }}" class="f7-btn f7-btn-red">Построить прогноз</a>{% endif %}
+        </div>
+    {% endif %}
+
+    <div class="f7-kpis">
+        {% for k in kpis %}
+            <div class="f7-kpi">
+                <div class="f7-kpi-title">{{ k.title }}</div>
+                <div class="f7-kpi-value">{{ k.value|mln }}</div>
+                <div class="f7-kpi-foot">
+                    {% if k.yoy is not None %}{{ k.yoy|delta }} <span class="f7-muted">к прошлому году</span>{% endif %}
+                    {% if k.sub %}<span class="f7-kpi-sub">{{ k.sub|rub }} {{ k.sub_label }}</span>{% endif %}
+                </div>
+            </div>
+        {% endfor %}
+        <div class="f7-kpi">
+            <div class="f7-kpi-title">Ошибка за {{ acc.horizon|default:6 }} мес. на прошлых данных</div>
+            {% if acc %}
+                <div class="f7-kpi-value">{{ acc.sum6|pct:0 }}</div>
+                <div class="f7-kpi-foot">
+                    <span class="f7-kpi-sub">в среднем по {{ acc.n }} проверкам</span>
+                    <a class="f7-card-link" href="{% url 'forecast_dashboard_backtest' %}?series={{ series }}">как проверяли →</a>
+                </div>
+            {% else %}
+                <div class="f7-kpi-value">—</div>
+                <div class="f7-kpi-foot"><span class="f7-kpi-sub">подбора параметров ещё не было</span></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="f7-card">
+        <div class="f7-card-title">{{ series_label }}: выручка по месяцам, млн ₽
+            <span class="f7-muted">— факт, прогноз и коридор, в который факт попадает в 8 случаях из 10{% if has_fact %}; на месяцах после даты прогноза уже есть факт{% endif %}</span>
+        </div>
+        {% include "sales/dashboards/_chart.html" with chart=chart type="line" height=340 %}
+    </div>
+
+    <div class="f7-card">
+        <div class="f7-card-title">Прогноз по месяцам</div>
+        <table class="f7-table f7-table-dash">
+            <thead><tr>
+                <th>Месяц</th><th class="f7-right">Прогноз, ₽</th><th class="f7-right">Коридор 80%</th>
+                <th class="f7-right">Год назад</th><th class="f7-right">К прошлому году</th>
+                <th class="f7-right">Факт</th><th class="f7-right">Отклонение</th>
+            </tr></thead>
+            <tbody>
+            {% for r in rows %}
+                <tr>
+                    <td><b>{{ r.label }}</b>{% if r.actual_before %} <span class="f7-muted">факт на дату {{ r.actual_before|mln }} + прогноз остатка</span>{% endif %}</td>
+                    <td class="f7-right">{{ r.expected|rub }}</td>
+                    <td class="f7-right f7-muted">{{ r.lower|mln }} – {{ r.upper|mln }}</td>
+                    <td class="f7-right">{{ r.prev|rub }}</td>
+                    <td class="f7-right">{{ r.yoy|delta }}</td>
+                    <td class="f7-right">{% if r.fact %}{{ r.fact|rub }}{% else %}<span class="f7-muted">ещё нет</span>{% endif %}</td>
+                    <td class="f7-right">{{ r.err|signed }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <div class="f7-note">
+            Модели: {% for name, label in params %}<b>{{ name }}</b> — {{ label }}{% if not forloop.last %}; {% endif %}{% endfor %}.
+            «Всего» — сумма двух прогнозов. Выручка без возвратов и корректировок.
+        </div>
+    </div>
+{% endif %}
+{% endblock %}

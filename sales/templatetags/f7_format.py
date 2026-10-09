@@ -66,3 +66,12 @@ def heat(value):
     except (TypeError, ValueError):
         return "transparent"
     return f"rgba(211, 20, 28, {0.06 + 0.6 * v:.2f})"
+
+
+@register.filter
+def signed(value):
+    """Ошибка прогноза без оценки «хорошо/плохо»: +12,3% / −4,0%."""
+    if value in (None, ""):
+        return "—"
+    v = 100 * float(value)
+    return f"{'+' if v > 0 else '−' if v < 0 else ''}{abs(v):.1f}%".replace(".", ",")

@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.urls import path
 from django.views.generic import RedirectView
 
+from forecast import views as fc
 from sales.dashboards import views as dash
 
 urlpatterns = [
@@ -15,6 +16,8 @@ urlpatterns = [
     path("admin/sales/dashboard/service/", dash.service, name="sales_dashboard_service"),
     path("admin/sales/dashboard/departments/", dash.departments, name="sales_dashboard_departments"),
     path("admin/sales/dashboard/season/", dash.season, name="sales_dashboard_season"),
+    path("admin/forecast/dashboard/", fc.overview, name="forecast_dashboard_overview"),
+    path("admin/forecast/dashboard/backtest/", fc.backtest, name="forecast_dashboard_backtest"),
     path("admin/", admin.site.urls),
 ]
 

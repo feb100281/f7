@@ -1,0 +1,139 @@
+{% extends "sales/dashboards/base.html" %}
+{% load f7_format %}
+
+{% block dash %}
+<form method="get" class="f7-filters">
+    <label>
+        <span>Ряд</span>
+        <select name="series" onchange="this.form.submit()">
+            {% for code, name in series_list %}<option value="{{ code }}"{% if code == series %} selected{% endif %}>{{ name }}</option>{% endfor %}
+        </select>
+    </label>
+    {% if cutoffs %}
+        <label>
+            <span>Прогноз с даты</span>
+            <select name="cutoff" onchange="this.form.submit()">
+                {% for c in cutoffs %}<option value="{{ c|date:'Y-m-d' }}"{% if c == cutoff %} selected{% endif %}>{{ c|date:"d.m.Y" }}</option>{% endfor %}
+            </select>
+        </label>
+    {% endif %}
+    <span class="f7-filters-period">
+        {% if tune_url %}<a href="{{ tune_url }}" class="f7-dash-meta-btn"><span class="material-symbols-outlined">tune</span>Подобрать параметры</a>{% endif %}
+    </span>
+</form>
+
+{% if not acc %}
+    <div class="f7-callout f7-callout-warn">
+        <span class="material-symbols-outlined">fact_check</span>
+        <div><b>Проверки ещё не было.</b> «Подобрать параметры» прогонит модель на прошлых сезонах:
+            прогноз с нескольких дат в прошлом против того, что случилось на самом деле.</div>
+        {% if tune_url %}<a href="{{ tune_url }}" class="f7-btn f7-btn-red">Подобрать параметры</a>{% endif %}
+    </div>
+{% else %}
+    <div class="f7-note f7-note-top">
+        Как проверяли: брали дату в прошлом, давали модели только продажи до этой даты и сравнивали её прогноз
+        на {{ acc.horizon }} мес. с тем, что продали на самом деле. Так {{ acc.n }} раз, с разных дат — и перед сезоном, и в сезон.
+    </div>
+    <div class="f7-kpis">
+        <div class="f7-kpi">
+            <div class="f7-kpi-title">Ошибка прогноза за {{ acc.horizon }} месяцев</div>
+            <div class="f7-kpi-value">{{ acc.sum6|pct:0 }}</div>
+            <div class="f7-kpi-foot"><span class="f7-kpi-sub">в среднем; в {{ acc.sum6_within10 }} из {{ acc.n }} проверок — меньше 10%. Разброс: от {{ acc.sum6_min|signed }} до {{ acc.sum6_max|signed }}</span></div>
+        </div>
+        <div class="f7-kpi">
+            <div class="f7-kpi-title">Ошибка прогноза за {{ acc.short }} месяца</div>
+            <div class="f7-kpi-value">{{ acc.sum3|pct:0 }}</div>
+            <div class="f7-kpi-foot"><span class="f7-kpi-sub">в среднем; от {{ acc.sum3_min|signed }} до {{ acc.sum3_max|signed }}</span></div>
+        </div>
+        <div class="f7-kpi">
+            <div class="f7-kpi-title">Перекос</div>
+            {% if acc.bias_word %}
+                <div class="f7-kpi-value">{{ acc.bias_word }} на {{ acc.bias_abs|pct:0 }}</div>
+                <div class="f7-kpi-foot"><span class="f7-kpi-sub">в среднем по всем проверкам</span></div>
+            {% else %}
+                <div class="f7-kpi-value">нет</div>
+                <div class="f7-kpi-foot"><span class="f7-kpi-sub">прогноз не тянет систематически ни вверх, ни вниз</span></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="f7-grid-2">
+        <div class="f7-card">
+            <div class="f7-card-title">Прогноз с {{ cutoff|date:"d.m.Y" }} против факта, млн ₽</div>
+            {% include "sales/dashboards/_chart.html" with chart=chart type="line" height=300 %}
+        </div>
+        <div class="f7-card">
+            <div class="f7-card-title">Сумма за {{ acc.horizon }} мес.: прогноз и факт по каждой дате, млн ₽</div>
+            {% include "sales/dashboards/_chart.html" with chart=bars type="bar" height=300 %}
+        </div>
+    </div>
+
+    <div class="f7-grid-2">
+        <div class="f7-card">
+            <div class="f7-card-title">По месяцам — прогноз с {{ cutoff|date:"d.m.Y" }} <span class="f7-muted">— отдельные месяцы скачут: выручка переезжает между соседними месяцами, за полгода это гасится</span></div>
+            <table class="f7-table f7-table-dash">
+                <thead><tr><th>Месяц</th><th class="f7-right">Прогноз</th><th class="f7-right">Коридор</th><th class="f7-right">Факт</th><th class="f7-right">Отклонение</th></tr></thead>
+                <tbody>
+                {% for r in cut_rows %}
+                    <tr>
+                        <td>{{ r.label }} <span class="f7-muted">+{{ r.h }} мес.</span></td>
+                        <td class="f7-right">{{ r.yhat|rub }}</td>
+                        <td class="f7-right f7-muted">{{ r.lower|mln }} – {{ r.upper|mln }}</td>
+                        <td class="f7-right">{{ r.actual|rub }}</td>
+                        <td class="f7-right">{{ r.err|signed }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="f7-card">
+            <div class="f7-card-title">Все даты проверки</div>
+            <table class="f7-table f7-table-dash">
+                <thead><tr><th>Прогноз с</th><th>Месяцы</th><th class="f7-right">Прогноз</th><th class="f7-right">Факт</th><th class="f7-right">Ошибка</th></tr></thead>
+                <tbody>
+                {% for r in by_cut %}
+                    <tr{% if r.cutoff == cutoff %} class="is-selected"{% endif %}>
+                        <td><a href="?series={{ series }}&cutoff={{ r.cutoff|date:'Y-m-d' }}">{{ r.cutoff|date:"d.m.Y" }}</a></td>
+                        <td class="f7-muted f7-nowrap">{{ r.first }} – {{ r.last }}</td>
+                        <td class="f7-right">{{ r.yhat|mln }}</td>
+                        <td class="f7-right">{{ r.actual|mln }}</td>
+                        <td class="f7-right"><b>{{ r.err|signed }}</b></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <div class="f7-note">
+                {% for name, label in params %}<b>{{ name }}</b>: {{ label }}<br>{% endfor %}
+                {% for name, url in tune_links %}<a href="{{ url }}" class="f7-link">все комбинации: {{ name }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}
+            </div>
+        </div>
+    </div>
+{% endif %}
+
+<div class="f7-card">
+    <div class="f7-card-title">Сохранённые прогнозы против пришедшего факта
+        <span class="f7-muted">— каждый «Построить прогноз» сохраняется; когда месяц закрывается фактом, он появляется здесь</span>
+    </div>
+    {% if saved %}
+        <table class="f7-table f7-table-dash">
+            <thead><tr><th>Прогноз от</th><th>По данным на</th><th>Месяц</th><th class="f7-right">Прогноз</th><th class="f7-right">Коридор</th><th class="f7-right">Факт</th><th class="f7-right">Отклонение</th><th class="f7-center">В коридоре</th></tr></thead>
+            <tbody>
+            {% for r in saved %}
+                <tr>
+                    <td><a href="{% url 'forecast_dashboard_overview' %}?series={{ series }}&run={{ r.run.pk }}">{{ r.run.created|date:"d.m.Y H:i" }}</a></td>
+                    <td class="f7-muted">{{ r.run.data_end|date:"d.m.Y" }}</td>
+                    <td>{{ r.month }}{% if r.partial %} <span class="f7-muted">(месяц начат)</span>{% endif %}</td>
+                    <td class="f7-right">{{ r.expected|rub }}</td>
+                    <td class="f7-right f7-muted">{{ r.lower|mln }} – {{ r.upper|mln }}</td>
+                    <td class="f7-right">{{ r.fact|rub }}</td>
+                    <td class="f7-right">{{ r.err|signed }}</td>
+                    <td class="f7-center">{% if r.inside %}<span class="f7-delta f7-delta-up">да</span>{% else %}<span class="f7-delta f7-delta-down">нет</span>{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="f7-note f7-note-top">Пока нечего сравнивать: появится, когда придут продажи за месяцы, на которые уже есть сохранённый прогноз.</div>
+    {% endif %}
+</div>
+{% endblock %}

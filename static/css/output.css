@@ -716,6 +716,7 @@
 
     .dark .f7-table-dash th { border-color: var(--color-base-700); }
     .f7-table-dash td { font-variant-numeric: tabular-nums; }
+    .f7-table-dash td.f7-right, .f7-table-dash td.f7-nowrap { white-space: nowrap; }
     .f7-table-dash a { font-weight: 600; }
     .f7-table-dash tr.is-selected td { background: var(--color-f7-red-soft); }
     .dark .f7-table-dash tr.is-selected td { background: rgba(237, 28, 37, 0.12); }
