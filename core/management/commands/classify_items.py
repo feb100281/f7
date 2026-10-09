@@ -16,10 +16,21 @@ from django.db.models import Count, Sum
 from catalog.models import GroupSource, Item
 from catalog.services.classify import reclassify
 from core.management.base import JobCommand
+from core.models.jobs import JobTypes
 
 
 class Command(JobCommand):
     help = "Пересчитать товарные группы номенклатуры по правилам (ручную разметку не трогает)"
+
+    job_name = "Пересчитать товарные группы"
+    job_type = JobTypes.ETL
+    job_description = (
+        "<h2><u>Пересчёт товарных групп по правилам</u></h2>"
+        "<p>Запускать после правки правил в catalog/rules.py. Артикулы, у которых менеджер "
+        "поменял группу вручную, не трогаются. Обычный импорт продаж размечает новые артикулы сам.</p>"
+        "<pre>Параметры:\ninclude_manual: true — сбросить и ручную разметку (осторожно)</pre>"
+    )
+    job_param = {"include_manual": False}
 
     def run(self, params: dict):
         include_manual = bool(params.get("include_manual", False))

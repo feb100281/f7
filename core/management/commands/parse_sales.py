@@ -35,6 +35,7 @@ from pathlib import Path
 from django.conf import settings
 
 from core.management.base import JobCommand
+from core.models.jobs import JobTypes
 
 DOC_RE = re.compile(
     r"^(?P<type>.+?)\s+(?P<number>\S+)\s+от\s+"
@@ -64,6 +65,22 @@ HEADERS = {
 
 class Command(JobCommand):
     help = "Выгрузки продаж 1С (xlsx) → номенклатура, продажи и витрины в базе"
+
+    job_name = "Импорт продаж из 1С"
+    job_type = JobTypes.DATA
+    job_description = (
+        "<h2><u>Импорт выгрузок продаж из 1С</u></h2>"
+        "<p>Читает все xlsx-отчёты «Продажи» (Регистратор → Номенклатура) из папки и сверяет "
+        "с «Итого» каждого файла, сырые строки и документы пишет в data/parquet/sales/. Затем: "
+        "номенклатура (новые артикулы, группы по правилам, ручная разметка не трогается) → "
+        "продажи в базу (полная перезаливка) → витрины для дашбордов (sql/marts/).</p>"
+        "<pre>Параметры:\nsource: папка с выгрузками\npattern: маска файлов (*.xlsx)\n"
+        "write_parquet / sync_catalog / load_sales / build_marts: false — пропустить шаг</pre>"
+    )
+    job_param = {
+        "source": "~/Library/CloudStorage/Dropbox/Remark_app/ЛОДКИ/ДАННЫЕ",
+        "pattern": "*.xlsx",
+    }
 
     def run(self, params: dict):
         import pandas as pd

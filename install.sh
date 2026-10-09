@@ -3,7 +3,7 @@
 #  FORMULA7 · Хелпер отдела продаж запчастей — установка проекта
 #
 #  Положить install.sh в любую папку (например ~/prj) и запустить:
-#      bash install.sh            → клонирует репо в ./f7app и ставит
+#      bash install.sh            → клонирует репо в ./f7 и ставит
 #      bash install.sh mydir      → то же, в ./mydir
 #  Если скрипт запущен прямо в папке проекта — просто git pull и установка.
 #
@@ -11,8 +11,8 @@
 # ============================================================
 set -e
 
-REPO="https://github.com/feb100281/f7app.git"
-DIR="${1:-f7app}"
+REPO="https://github.com/feb100281/f7.git"
+DIR="${1:-f7}"
 
 cd "$(dirname "$0")"
 
@@ -90,7 +90,7 @@ echo "— Миграции"
 python manage.py migrate
 
 echo
-echo "— Начальные данные: группы, список команд"
+echo "— Начальные данные: группы, список команд (sync_jobs), товарные группы"
 python manage.py firstrun
 
 echo
@@ -99,6 +99,25 @@ if python manage.py shell -c "from django.contrib.auth import get_user_model as 
     echo "  суперпользователь уже есть, пропускаю"
 else
     python manage.py createsuperuser
+fi
+
+echo
+echo "— Данные продаж"
+SRC=$(python manage.py shell -v 0 -c "from core.models import Jobs; j = Jobs.objects.filter(command='parse_sales').first(); print((j.param or {}).get('source', '') if j else '')")
+SRC_DIR="${SRC/#\~/$HOME}"
+if python manage.py shell -v 0 -c "import sys; from sales.models import SalesLine; sys.exit(0 if SalesLine.objects.exists() else 1)"; then
+    echo "  продажи уже в базе — пересчитываю витрины (SQL мог обновиться)"
+    python manage.py build_marts || echo "  (витрины не пересчитались — см. ошибку выше)"
+elif [ -n "$SRC" ] && [ -d "$SRC_DIR" ]; then
+    read -r -p "  Загрузить продажи из $SRC сейчас? [Y/n] " ANSWER
+    if [[ ! "$ANSWER" =~ ^[NnНн] ]]; then
+        python manage.py parse_sales || echo "  (импорт не получился — см. ошибку выше)"
+    else
+        echo "  пропускаю — потом: админка → Система → Команды → «Импорт продаж из 1С»"
+    fi
+else
+    echo "  папка с выгрузками не найдена: ${SRC:-не задана}"
+    echo "  укажите source в админке → Система → Команды → «Импорт продаж из 1С» и запустите её"
 fi
 
 echo

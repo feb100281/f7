@@ -6,11 +6,21 @@
 """
 
 from core.management.base import JobCommand
+from core.models.jobs import JobTypes
 from core.models import Jobs
 
 
 class Command(JobCommand):
     help = "Обрезать логи команд до последних N строк"
+
+    job_name = "Очистка логов"
+    job_type = JobTypes.SERVICE
+    job_description = (
+        "<h2><u>Очистка логов команд</u></h2>"
+        "<p>Оставляет в каждом логе только последние строки.</p>"
+        "<pre>Параметры:\nkeep_lines: сколько строк оставить (500)</pre>"
+    )
+    job_param = {"keep_lines": 500}
 
     def run(self, params: dict):
         keep = int(params.get("keep_lines", 500))

@@ -13,11 +13,21 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 
 from core.management.base import JobCommand
+from core.models.jobs import JobTypes
 from core.models import Jobs
 
 
 class Command(JobCommand):
     help = "Проверка окружения: Python, Django, база, папки"
+
+    job_name = "Проверка окружения"
+    job_type = JobTypes.SERVICE
+    job_description = (
+        "<h2><u>Проверка окружения</u></h2>"
+        "<p>Пишет в лог версии Python и Django, путь к базе, число таблиц и папки проекта. "
+        "Удобно, чтобы убедиться, что запуск команд из админки работает.</p>"
+        "<pre>Параметры: любые — будут выведены в лог</pre>"
+    )
 
     def run(self, params: dict):
         self.step("Окружение")
