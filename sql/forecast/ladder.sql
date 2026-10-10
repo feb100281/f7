@@ -187,7 +187,9 @@ where iw.group_value > 0;
 
 
 -- 5. Статистика артикулов по всей компании (сервис + продажи): спрос по месяцам с нулями
---    CV считается по 12 полным месяцам, нулевые месяцы входят: продажа рывками = высокий CV
+--    CV считается по 12 полным месяцам, нулевые месяцы входят: продажа рывками = высокий CV.
+--    Новинка (Item.is_new) — только с месяца, когда пошли продажи (new_since): месяцы, когда
+--    товара ещё не было, не нули спроса. months_active — по скольким месяцам посчитано.
 drop table if exists db.mart_fc_item_stats;
 create table db.mart_fc_item_stats as
 with b as (
@@ -210,19 +212,25 @@ mq as (
     group by fl.item_id, cast(date_trunc('month', fl.date) as date)
 ),
 items as (
-    select distinct item_id from mq
+    select distinct mq.item_id,
+        case when cast(i.is_new as integer) = 1 and i.new_since is not null
+             then cast(date_trunc('month', cast(i.new_since as date)) as date) end   as launch
+    from mq
+    join db.catalog_item i on i.id = mq.item_id
 ),
 grid as (
     select items.item_id, months.month, coalesce(mq.qty, 0) as qty
     from items
     cross join months
     left join mq on mq.item_id = items.item_id and mq.month = months.month
+    where items.launch is null or months.month >= items.launch
 ),
 s12 as (
     select
         item_id,
         sum(qty)                                  as qty12,
         count(*) filter (where qty > 0)           as months12,
+        count(*)                                  as months_active,
         avg(qty)                                  as mean12,
         stddev_pop(qty)                           as std12
     from grid
@@ -247,6 +255,7 @@ select
     s12.item_id,
     s12.qty12,
     cast(s12.months12 as integer)                                  as months12,
+    cast(s12.months_active as integer)                             as months_active,
     s12.mean12,
     s12.std12,
     case when s12.mean12 > 0 then s12.std12 / s12.mean12 end        as cv12,

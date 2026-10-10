@@ -187,12 +187,15 @@ class ForecastItem(models.Model):
 
 class ItemDemandStats(models.Model):
     """Статистика спроса артикула по всей компании (витрина mart_fc_item_stats, пишет ladder.sql).
-    Спрос — штуки по 12 полным месяцам, нулевые месяцы входят в среднее и разброс."""
+    Спрос — штуки по 12 полным месяцам, нулевые месяцы входят в среднее и разброс;
+    у новинки — только месяцы с начала продаж (months_active)."""
 
     item = models.OneToOneField("catalog.Item", primary_key=True, db_column="item_id", db_constraint=False,
                                 on_delete=models.DO_NOTHING, related_name="+", verbose_name="Артикул")
     qty12 = models.FloatField("Продано за 12 мес., шт.")
     months12 = models.IntegerField("Месяцев с продажами из 12")
+    months_active = models.IntegerField("Месяцев в расчёте", default=12,
+                                        help_text="12, у новинки — с месяца, когда пошли продажи")
     mean12 = models.FloatField("Среднее в месяц")
     std12 = models.FloatField("Std в месяц")
     cv12 = models.FloatField("CV", null=True)

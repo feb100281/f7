@@ -9,6 +9,8 @@
 Когда остаток (склад + в пути) опускается до точки заказа — пора заказывать.
 CV — по 12 полным месяцам факта, нулевые месяцы входят. Редкий спрос (продажи меньше чем
 в RARE_MONTHS месяцах из 12) — формула для него не годится: страховой запас 0, кандидат «под заказ».
+Новинка (Item.is_new) — CV и порог «редкого» по месяцам с начала продаж; меньше NEW_MIN_MONTHS
+месяцев — «новинка: мало данных», без запаса, решать руками.
 z — из уровня сервиса: 95% → 1,64 (в 95% случаев запаса хватит до прихода поставки).
 """
 
@@ -26,6 +28,9 @@ from forecast.models import ForecastItem, ForecastRun, ItemDemandStats, PriceSou
 LEAD_TIME = 4          # средний срок поставки, мес.
 SERVICE_LEVEL = 0.95   # уровень сервиса
 RARE_MONTHS = 4        # меньше стольких месяцев с продажами из 12 — редкий спрос
+NEW_MIN_MONTHS = 3     # новинка, продаётся меньше стольких месяцев — мало данных для запаса
+NEW_FEW = "новинка: мало данных"
+NO_SAFETY = ("редкий", "нет продаж", NEW_FEW)   # без страхового запаса, обычное округление
 
 DEMAND_CLASSES = [  # (верхняя граница CV, название)
     (0.5, "стабильный"),
@@ -38,10 +43,15 @@ def z_value(service_level: float) -> float:
     return NormalDist().inv_cdf(min(max(service_level, 0.5), 0.999))
 
 
-def demand_class(months12: int | None, cv: float | None) -> str:
+def demand_class(months12: int | None, cv: float | None, is_new: bool = False, months_active: int = 12) -> str:
+    """Новинка — по месяцам с начала продаж: «редкий» порог пропорционально короче,
+    а меньше NEW_MIN_MONTHS месяцев — «мало данных» (запас не считаем, решать руками)."""
+    if is_new and (months_active < NEW_MIN_MONTHS or not months12):
+        return NEW_FEW   # в т.ч. продажи только в текущем, неполном месяце
     if not months12:
         return "нет продаж"
-    if months12 < RARE_MONTHS or cv is None:
+    rare = RARE_MONTHS if not is_new else max(1, round(RARE_MONTHS * months_active / 12))
+    if months12 < rare or cv is None:
         return "редкий"
     return next(name for limit, name in DEMAND_CLASSES if cv <= limit)
 
@@ -99,12 +109,13 @@ def item_rows(run: ForecastRun, series_names: list[str], lead_time: int = LEAD_T
         mean_fc = q6 / len(full6) if full6 else 0.0
         q_lt = sum(a["by_month"].get(m, 0.0) for m in lt_months)
         months12 = st.months12 if st else 0
+        months_active = (st.months_active or 12) if st else 12
         cv = st.cv12 if st else None
-        cls = demand_class(months12, cv)
-        safety = z * cv * mean_fc * math.sqrt(lead_time) if procurement and cls not in ("редкий", "нет продаж") else 0.0
+        cls = demand_class(months12, cv, item.is_new, months_active)
+        safety = z * cv * mean_fc * math.sqrt(lead_time) if procurement and cls not in NO_SAFETY else 0.0
         if not procurement:
             rop = None
-        elif cls in ("редкий", "нет продаж"):
+        elif cls in NO_SAFETY:
             rop = int(math.floor(q_lt + 0.5))  # редкий: обычное округление, 0,2 шт. ≠ штука на складе
         else:
             rop = math.ceil(q_lt + safety - 1e-9)
@@ -113,7 +124,8 @@ def item_rows(run: ForecastRun, series_names: list[str], lead_time: int = LEAD_T
             **a, "item": item, "stats": st,
             "rest": a["by_month"].get(hz.partial, 0.0) if hz.partial else 0.0,
             "months": full6, "q3": sum(full6[:3]), "q6": q6, "q_lt": q_lt,
-            "cv": cv, "months12": months12, "demand": cls, "safety": safety, "rop": rop,
+            "cv": cv, "months12": months12, "months_active": months_active, "demand": cls,
+            "is_new": item.is_new, "new_since": item.new_since, "safety": safety, "rop": rop,
             "cost": cost, "rop_cost": rop * cost if (rop is not None and cost) else None,
             "price_label": PriceSource(a["price_source"]).label if a["price_source"] else "",
         })

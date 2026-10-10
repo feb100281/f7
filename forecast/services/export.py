@@ -12,6 +12,7 @@ from datetime import datetime
 
 from django.utils import timezone
 from openpyxl import Workbook
+from openpyxl.comments import Comment
 from openpyxl.formatting.rule import CellIsRule, ColorScaleRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -33,6 +34,7 @@ HEAD_FILL = PatternFill("solid", fgColor=INK)
 CALC_HEAD_FILL = PatternFill("solid", fgColor=RED)
 CALC_FILL = PatternFill("solid", fgColor="FDF2F2")
 TOTAL_FILL = PatternFill("solid", fgColor="F3F4F6")
+NEW_FILL = PatternFill("solid", fgColor="FDF3E1")   # новинка — проверить руками
 THIN = Border(bottom=Side(style="thin", color=LINE))
 
 F_QTY = '#,##0.0;-#,##0.0;"–"'
@@ -111,6 +113,9 @@ def _params_sheet(ws: Worksheet, run, lt, service_level, hz):
         "   Когда остаток на складе + в пути опускается до точки заказа — пора заказывать.",
         "7. Себестоимость — последняя по продажам; «точка заказа по с/с» — сколько денег держать в этих штуках.",
     ]
+    steps.append("8. НОВИНКИ (строки выделены, у артикула — комментарий): продажи пошли за последние полгода, "
+                 "а раньше почти не было. Разброс и спрос — с месяца начала продаж; меньше 3 мес. — "
+                 "«новинка: мало данных», без страхового запаса. Прогноз по короткой истории — проверить руками.")
     for i, text in enumerate(steps, start=r + 1):
         ws.cell(row=i, column=1, value=text).font = _font()
     r = r + len(steps) + 2
@@ -145,7 +150,7 @@ def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
     # колонки
     headers = [
         ("Группа", 26, False), ("Артикул", 14, False), ("Название", 40, False), ("Техника", 14, False),
-        ("Мес. с продажами из 12", 11, False), ("Продано за 12 мес., шт.", 11, False),
+        ("Мес. с продажами из 12 (новинка — с начала продаж)", 13, False), ("Продано за 12 мес., шт.", 11, False),
         ("Среднее в мес., шт.", 10, False), ("Std в мес., шт.", 10, False), ("CV", 8, False), ("Спрос", 13, False),
         ("Первая продажа", 12, False), ("Последняя продажа", 12, False),
         ("Цена, ₽", 11, False), ("Откуда цена", 19, False), ("С/с последняя, ₽/шт.", 12, False),
@@ -183,14 +188,16 @@ def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
             item.platform.name if item.platform_id else "",
             r["months12"], st.qty12 if st else 0, st.mean12 if st else 0, st.std12 if st else 0,
             f'=IF(G{i}>0,H{i}/G{i},"")',
+            # новинка: класс считан по месяцам с начала продаж — значением, не формулой
+            r["demand"] if r["is_new"] else
             f'=IF(E{i}=0,"нет продаж",IF(E{i}<{P_RARE},"редкий",IF(I{i}<=0.5,"стабильный",IF(I{i}<=1,"колеблется","нерегулярный"))))',
             st.first_sale if st else None, st.last_sale if st else None,
             r["price"], r["price_label"], r["cost"], st.last_cost_date if st else None,
             r["rest"], *r["months"],
             f"=SUM({m1}{i}:{m6}{i})", r["service6"], r["shop6"],
             f"=SUMPRODUCT(({m1}${HEAD - 1}:{m6}${HEAD - 1}<={P_LT})*{m1}{i}:{m6}{i})",
-            f'=IF(OR(J{i}="редкий",J{i}="нет продаж",I{i}=""),0,{P_Z}*I{i}*AVERAGE({m1}{i}:{m6}{i})*SQRT({P_LT}))',
-            f'=IF(OR(J{i}="редкий",J{i}="нет продаж"),ROUND({L(c_lt)}{i},0),ROUNDUP({L(c_lt)}{i}+{L(c_ss)}{i},0))',
+            f'=IF(OR(J{i}="редкий",J{i}="нет продаж",J{i}="{stock.NEW_FEW}",I{i}=""),0,{P_Z}*I{i}*AVERAGE({m1}{i}:{m6}{i})*SQRT({P_LT}))',
+            f'=IF(OR(J{i}="редкий",J{i}="нет продаж",J{i}="{stock.NEW_FEW}"),ROUND({L(c_lt)}{i},0),ROUNDUP({L(c_lt)}{i}+{L(c_ss)}{i},0))',
             f'=IF(O{i}="",0,{L(c_rop)}{i}*O{i})',
             r["revenue6"],
         ]
@@ -212,6 +219,19 @@ def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
         ws.cell(row=i, column=c_total).font = _font(bold=True)
         for j in (c_lt, c_ss, c_rop, c_ropc):
             ws.cell(row=i, column=j).fill = CALC_FILL
+        if r["is_new"]:
+            for j in range(1, c_rev + 1):
+                if j not in (c_lt, c_ss, c_rop, c_ropc):
+                    ws.cell(row=i, column=j).fill = NEW_FILL
+            note = (f"НОВИНКА: продажи пошли {r['new_since']:%d.%m.%Y}, история {r['months_active']} мес. "
+                    f"Среднее, разброс (CV) и спрос — с этого месяца. Прогноз по короткой истории: "
+                    f"проверьте вручную перед заказом.")
+            if r["demand"] == stock.NEW_FEW:
+                note += " Меньше 3 мес. продаж — страховой запас не считаем."
+            c = ws.cell(row=i, column=2)
+            c.comment = Comment(note, "F7")
+            c.comment.width, c.comment.height = 320, 110
+            c.font = _font(bold=True, color="8A5A0B")
 
     last = FIRST + len(rows) - 1
     # итог
@@ -233,6 +253,9 @@ def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
                        end_type="num", end_value=3, end_color="FDE2E2"))
     ws.conditional_formatting.add(
         f"J{FIRST}:J{last}", CellIsRule(operator="equal", formula=['"редкий"'], font=Font(name=FONT, color="9CA3AF")))
+    ws.conditional_formatting.add(
+        f"J{FIRST}:J{last}", CellIsRule(operator="equal", formula=[f'"{stock.NEW_FEW}"'],
+                                         font=Font(name=FONT, color="8A5A0B", bold=True)))
     return {"first": FIRST, "last": last, "col": {
         "months12": "E", "qty12": "F", "demand": "J", "total": L(c_total), "lt": L(c_lt), "ss": L(c_ss),
         "rop": L(c_rop), "ropc": L(c_ropc), "rev": L(c_rev)}}

@@ -650,6 +650,12 @@
     .dark .f7-callout-info { background: rgba(59, 130, 196, 0.15); color: #A9CBEB; }
     .f7-family { display: inline-flex; align-items: center; gap: 3px; margin-top: 2px; font-size: 11px; font-weight: 600; color: #3B82C4; }
     .f7-family .material-symbols-outlined { font-size: 13px; }
+    .f7-new { display: inline-block; margin-top: 2px; padding: 0 6px; border-radius: 3px; font-size: 11px; font-weight: 600; background: #FDF3E1; color: #8a5a0b; white-space: nowrap; }
+    .dark .f7-new { background: rgba(183, 121, 31, 0.2); color: #F2C46D; }
+    .f7-new-inline { margin: 0 0 0 6px; }
+    .f7-field-stack .f7-new, .f7-field-stack .f7-family { align-self: flex-start; }
+    .f7-row-new td { background: rgba(253, 243, 225, 0.45); }
+    .dark .f7-row-new td { background: rgba(183, 121, 31, 0.08); }
 
     .f7-filters {
         display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; padding: 12px 14px;

@@ -175,6 +175,7 @@ class ItemAdmin(AppModelAdmin):
         ("group_source", ChoicesDropdownFilter),
         RegularityFilter,
         FamilyFilter,
+        "is_new",
         ("revenue", RangeNumericFilter),
     ]
     search_fields = ["article", "name", "name_1c"]
@@ -183,14 +184,14 @@ class ItemAdmin(AppModelAdmin):
     readonly_fields = [
         "name_1c", "group_source", "group_rule",
         "first_sale", "last_sale", "qty", "revenue", "cost", "docs", "months", "created", "updated",
-        "family_col",
+        "family_col", "is_new", "new_since",
     ]
     fieldsets = (
         ("Артикул", {"fields": [("article", "name"), "name_1c", "note", "family_col"]}),
         ("Группа", {"fields": [("group", "platform"), ("group_source", "group_rule")]}),
         ("Продажи", {
             "classes": ["tab"],
-            "fields": [("first_sale", "last_sale"), ("qty", "docs", "months"), ("revenue", "cost"), ("created", "updated")],
+            "fields": [("first_sale", "last_sale"), ("is_new", "new_since"), ("qty", "docs", "months"), ("revenue", "cost"), ("created", "updated")],
         }),
     )
 
@@ -220,6 +221,11 @@ class ItemAdmin(AppModelAdmin):
                               '<span class="material-symbols-outlined">merge</span>заменяет {} {}</span>',
                               n, "номер" if n == 1 else "номера" if n < 5 else "номеров")
         else:
+            tag = ""
+        if obj.is_new:
+            tag = format_html('{}<span class="f7-new" title="Продажи пошли {}: короткая история, прогноз проверять вручную">'
+                              'новинка с {}</span>', tag, f"{obj.new_since:%d.%m.%Y}", f"{obj.new_since:%m.%Y}")
+        if not tag:
             return cell
         return format_html('<span class="f7-field-stack">{}{}</span>', cell, tag)
 

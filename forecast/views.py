@@ -443,16 +443,17 @@ def qty(request):
 
     keys = ("rest", "q3", "q6", "q_lt", "safety", "revenue6")
     if group_id is None:
-        acc = defaultdict(lambda: {**{k: 0.0 for k in keys}, "rop": 0, "rop_cost": 0.0, "n": 0, "regular": 0})
+        acc = defaultdict(lambda: {**{k: 0.0 for k in keys}, "rop": 0, "rop_cost": 0.0, "n": 0, "regular": 0, "new": 0})
         for r in rows:
             a = acc[r["group_id"]]
             for k in keys:
                 a[k] += r[k]
             a["n"] += 1
+            a["new"] += 1 if r["is_new"] else 0
             if procurement:
                 a["rop"] += r["rop"]
                 a["rop_cost"] += r["rop_cost"] or 0
-            if r["demand"] not in ("редкий", "нет продаж"):
+            if r["demand"] not in stock.NO_SAFETY:
                 a["regular"] += 1
         ly = _ly_qty(kinds, m6, "item__group", run.families)
         gnames = {g.pk: g.name for g in ItemGroup.objects.all()}

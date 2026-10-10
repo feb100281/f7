@@ -73,6 +73,14 @@ class Item(models.Model):
         help_text="Заполняется сам по заменам номеров: на какой артикул переходят прогноз и статистика",
     )
 
+    is_new = models.BooleanField(
+        verbose_name="Новинка", default=False,
+        help_text="Первая продажа (по всему семейству номеров) — за последние 6 месяцев. "
+                  "Короткая история: прогноз и запас проверять вручную. Ставится само при импорте",
+    )
+    new_since = models.DateField(verbose_name="Продаётся с", null=True, blank=True,
+                                 help_text="Первая продажа семейства — для новинок")
+
     note = models.TextField(verbose_name="Комментарий", blank=True)
     created = models.DateTimeField(verbose_name="Добавлен", auto_now_add=True)
     updated = models.DateTimeField(verbose_name="Обновлён", auto_now=True)

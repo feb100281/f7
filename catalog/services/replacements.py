@@ -25,6 +25,9 @@ from catalog.models import Item, ItemReplacement, ReplacementSource as Src, Repl
 
 SPEC_GROUPS = ("oil", "chem")
 RECENT_DAYS = 183
+NEW_DAYS = 183           # новинка: продажи пошли за последние полгода…
+NEW_BEFORE_SHARE = 0.10  # …а до этого продано не больше 10% от продаж за эти полгода
+SALE_KINDS = ("service", "sale", "retail")
 # при нескольких действующих заменах у одного номера побеждает более надёжный источник
 PRIORITY = {Src.MANUAL: 0, Src.CLIENT: 1, Src.RULE_9X: 2, Src.OIL: 3, Src.NAME: 4}
 
@@ -170,7 +173,49 @@ def rebuild_families(log=print) -> dict:
             if current.get(i) != h:
                 changed.append(Item(pk=i, family_head_id=h))
         Item.objects.bulk_update(changed, ["family_head"], batch_size=1000)
+    mark_new(log)
     heads = len({h for h in target.values() if h})
     log(f"   семейств: {heads}, номеров переведено на актуальный: {sum(1 for h in target.values() if h)}, "
         f"изменилось: {len(changed)}")
     return {"families": heads, "members": sum(1 for h in target.values() if h), "changed": len(changed)}
+
+
+
+def mark_new(log=print) -> int:
+    """Item.is_new / new_since — новинка: продажи пошли за последние NEW_DAYS дней, а до этого
+    по всему семейству номеров почти ничего (не больше NEW_BEFORE_SHARE от продаж за полгода:
+    разовая тестовая продажа год назад новинку не отменяет). 9779282 с историей 779282 — не новинка,
+    старые номера семьи новинками не бывают. new_since — первая продажа за эти полгода
+    (или вообще первая, если раньше продаж не было)."""
+    from django.db.models import Min, Q, Sum
+    from django.db.models.functions import Coalesce
+
+    from sales.models import SalesLine
+
+    last_any = Item.objects.aggregate(m=Max("last_sale"))["m"]
+    if not last_any:
+        return 0
+    border = last_any - timedelta(days=NEW_DAYS)
+    fam = Coalesce("item__family_head_id", "item_id")
+    rows = (SalesLine.objects.filter(doc__kind__in=SALE_KINDS)
+            .annotate(f=fam).values("f")
+            .annotate(pre=Sum("qty", filter=Q(doc__date__lt=border), default=0),
+                      post=Sum("qty", filter=Q(doc__date__gte=border), default=0),
+                      first_post=Min("doc__date", filter=Q(doc__date__gte=border)),
+                      first_any=Min("doc__date")))
+    new = {}
+    for r in rows:
+        pre, post = float(r["pre"] or 0), float(r["post"] or 0)
+        if post > 0 and pre <= NEW_BEFORE_SHARE * post:
+            new[r["f"]] = r["first_any"] if pre == 0 else r["first_post"]
+
+    items = list(Item.objects.only("id", "is_new", "new_since", "family_head"))
+    changed = []
+    for it in items:
+        since = None if it.family_head_id else new.get(it.pk)
+        if it.is_new != bool(since) or it.new_since != since:
+            it.is_new, it.new_since = bool(since), since
+            changed.append(it)
+    Item.objects.bulk_update(changed, ["is_new", "new_since"], batch_size=1000)
+    log(f"   новинок (продажи пошли с {border:%d.%m.%Y}): {len(new)}")
+    return len(new)
