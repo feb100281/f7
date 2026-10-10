@@ -111,6 +111,56 @@
 {% endif %}
 
 <div class="f7-card">
+    <div class="f7-card-title">Штуки по артикулам: каждый номер отдельно или со склейкой номеров
+        {% if qc_url %}<a href="{{ qc_url }}" class="f7-dash-meta-btn f7-right-btn"><span class="material-symbols-outlined">play_arrow</span>Проверить штуки</a>{% endif %}
+    </div>
+    {% if qc %}
+        <div class="f7-note f7-note-top">
+            С каждой даты проверки прогноз выручки тех времён разложили по артикулам — по продажам, известным на ту дату, —
+            и сравнили штуки за {{ qc.check.months }} мес. с тем, что продали. Ошибка — сколько штук «промахнулись» по всем артикулам
+            вместе (в плюс и в минус) к проданному. Запчасти продаются рывками, поэтому по отдельному артикулу ошибка всегда большая —
+            смотрите, какой вариант точнее. Со склейкой старый номер (779282) считается вместе с актуальным (9779282) — см.
+            <a class="f7-link" href="{% url 'admin:catalog_itemreplacement_changelist' %}">Замены номеров</a>.
+        </div>
+        <div class="f7-kpis">
+            {% for v in qc.variants %}
+                <div class="f7-kpi">
+                    <div class="f7-kpi-title">{{ v.label }}</div>
+                    <div class="f7-kpi-value">{{ v.all.err|pct:0 }}</div>
+                    <div class="f7-kpi-foot"><span class="f7-kpi-sub">ошибка в штуках по всем артикулам</span></div>
+                </div>
+            {% endfor %}
+            <div class="f7-kpi">
+                <div class="f7-kpi-title">Артикулы с заменами номеров</div>
+                <div class="f7-kpi-value">{{ qc.variants.0.fam.err|pct:0 }} → {{ qc.variants.1.fam.err|pct:0 }}</div>
+                <div class="f7-kpi-foot"><span class="f7-kpi-sub">ошибка без склейки → со склейкой; это масла и химия — самые ходовые штуки</span></div>
+            </div>
+        </div>
+        <table class="f7-table f7-table-dash">
+            <thead>
+                <tr><th rowspan="2">Прогноз с</th><th colspan="2" class="f7-center">Все артикулы</th><th colspan="2" class="f7-center">Артикулы с заменами</th></tr>
+                <tr><th class="f7-right">как сейчас</th><th class="f7-right">со склейкой</th><th class="f7-right">как сейчас</th><th class="f7-right">со склейкой</th></tr>
+            </thead>
+            <tbody>
+            {% for r in qc.rows %}
+                <tr>
+                    <td>{{ r.cutoff|date:"d.m.Y" }}</td>
+                    <td class="f7-right">{{ r.items.err|pct:0 }}</td>
+                    <td class="f7-right"><b>{{ r.families.err|pct:0 }}</b></td>
+                    <td class="f7-right">{{ r.items.fam|pct:0 }}</td>
+                    <td class="f7-right"><b>{{ r.families.fam|pct:0 }}</b></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <div class="f7-note">Проверено {{ qc.check.created|date:"d.m.Y H:i" }}, факт по {{ qc.check.data_end|date:"d.m.Y" }}.</div>
+    {% else %}
+        <div class="f7-note f7-note-top">Ещё не проверяли. «Проверить штуки» разложит прогнозы с прошлых дат по артикулам
+            и сравнит с фактом — в двух вариантах: каждый номер отдельно и со склейкой старых номеров с актуальными.</div>
+    {% endif %}
+</div>
+
+<div class="f7-card">
     <div class="f7-card-title">Сохранённые прогнозы против пришедшего факта
         <span class="f7-muted">— каждый «Построить прогноз» сохраняется; когда месяц закрывается фактом, он появляется здесь</span>
     </div>

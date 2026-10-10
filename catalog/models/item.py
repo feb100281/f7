@@ -67,6 +67,12 @@ class Item(models.Model):
         help_text="В скольких календарных месяцах артикул продавался",
     )
 
+    family_head = models.ForeignKey(
+        "self", verbose_name="Актуальный номер", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="family_members",
+        help_text="Заполняется сам по заменам номеров: на какой артикул переходят прогноз и статистика",
+    )
+
     note = models.TextField(verbose_name="Комментарий", blank=True)
     created = models.DateTimeField(verbose_name="Добавлен", auto_now_add=True)
     updated = models.DateTimeField(verbose_name="Обновлён", auto_now=True)

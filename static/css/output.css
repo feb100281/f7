@@ -645,6 +645,11 @@
     .f7-callout-warn { background: #FDF3E1; color: #6b4a12; border-left: 3px solid var(--color-f7-warn); }
     .f7-callout-warn .material-symbols-outlined { color: var(--color-f7-warn); }
     .dark .f7-callout-warn { background: rgba(183, 121, 31, 0.15); color: #F2C46D; }
+    .f7-callout-info { background: #EEF4FB; color: #22415f; border-left: 3px solid #3B82C4; }
+    .f7-callout-info .material-symbols-outlined { color: #3B82C4; }
+    .dark .f7-callout-info { background: rgba(59, 130, 196, 0.15); color: #A9CBEB; }
+    .f7-family { display: inline-flex; align-items: center; gap: 3px; margin-top: 2px; font-size: 11px; font-weight: 600; color: #3B82C4; }
+    .f7-family .material-symbols-outlined { font-size: 13px; }
 
     .f7-filters {
         display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; padding: 12px 14px;
@@ -728,6 +733,7 @@
     .dark .f7-table-dash tr.is-selected td { background: rgba(237, 28, 37, 0.12); }
     .f7-table-dash th.f7-right { text-align: right; }
     .f7-center { text-align: center; }
+    .f7-right-btn { float: right; margin-top: -4px; font-weight: 500; }
 
     .f7-ellipsis {
         display: inline-block; max-width: 260px; overflow: hidden; text-overflow: ellipsis;

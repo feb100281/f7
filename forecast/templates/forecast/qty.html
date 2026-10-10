@@ -148,7 +148,7 @@
                 <tbody>
                 {% for r in item_rows %}
                     <tr>
-                        <td class="f7-nowrap"><a href="{% url 'admin:catalog_item_change' r.item.pk %}">{{ r.item.article }}</a></td>
+                        <td class="f7-nowrap"><a href="{% url 'admin:catalog_item_change' r.item.pk %}">{{ r.item.article }}</a>{% if r.olds %}<br><span class="f7-family" title="Прогноз, статистика и «год назад» — вместе со старыми номерами: {{ r.olds|join:', ' }}"><span class="material-symbols-outlined">merge</span>+ {{ r.olds|join:', ' }}</span>{% endif %}</td>
                         <td><span class="f7-ellipsis" title="{{ r.item.name }}">{{ r.item.name }}</span></td>
                         <td class="f7-right">{{ r.months12|num }}</td>
                         <td class="f7-right">{% if r.cv is not None %}{{ r.cv|num:2 }}{% else %}—{% endif %}</td>

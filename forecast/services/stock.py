@@ -121,5 +121,14 @@ def item_rows(run: ForecastRun, series_names: list[str], lead_time: int = LEAD_T
     return rows, hz
 
 
+def family_olds(ids) -> dict:
+    """{актуальный номер: [старые номера]} — для раскладки по семействам (замены номеров)."""
+    out = defaultdict(list)
+    for head, art in (Item.objects.filter(family_head_id__in=list(ids)).order_by("article")
+                      .values_list("family_head_id", "article")):
+        out[head].append(art)
+    return out
+
+
 def series_names(series: str) -> list[str]:
     return [Series.SERVICE, Series.SHOP] if series == Series.TOTAL else [series]

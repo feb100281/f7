@@ -98,6 +98,8 @@ class ForecastRun(models.Model):
     tune_runs = models.JSONField("Подбор, из которого параметры", default=dict)
     seconds = models.FloatField("Время, c", default=0)
     note = models.CharField("Комментарий", max_length=250, blank=True)
+    families = models.BooleanField("Штуки по семействам номеров", default=False,
+                                   help_text="Старые номера посчитаны вместе с актуальным (замены номеров)")
 
     class Meta:
         verbose_name = "Прогноз"
@@ -206,3 +208,47 @@ class ItemDemandStats(models.Model):
         db_table = "mart_fc_item_stats"
         verbose_name = "Статистика спроса"
         verbose_name_plural = "Статистика спроса"
+
+
+class QtyCheckVariant(models.TextChoices):
+    ITEMS = "items", "Как сейчас — каждый номер отдельно"
+    FAMILIES = "families", "Со склейкой номеров"
+
+
+class QtyCheck(models.Model):
+    """Проверка штук на прошлом: прогноз выручки с прошлых отсечек → лестница → штуки против факта."""
+
+    created = models.DateTimeField("Когда", auto_now_add=True)
+    data_end = models.DateField("Факт по")
+    months = models.PositiveSmallIntegerField("Месяцев вперёд", default=6)
+    tune_runs = models.JSONField("Подборы (прогноз выручки)", default=dict)
+    seconds = models.FloatField("Время, c", default=0)
+
+    class Meta:
+        verbose_name = "Проверка штук"
+        verbose_name_plural = "Проверки штук"
+        ordering = ["-created"]
+
+    def __str__(self):
+        return f"Проверка штук · {self.created:%d.%m.%Y %H:%M}"
+
+
+class QtyCheckPoint(models.Model):
+    """Одна отсечка × вариант. Ошибка = Σ|прогноз − факт| по артикулам / Σ факт (за months мес.).
+    fam_* — то же только по артикулам, у которых есть замены номеров."""
+
+    run = models.ForeignKey(QtyCheck, on_delete=models.CASCADE, related_name="points")
+    cutoff = models.DateField("Отсечка")
+    variant = models.CharField("Вариант", max_length=10, choices=QtyCheckVariant.choices)
+    items = models.PositiveIntegerField("Артикулов", default=0)
+    actual = models.FloatField("Факт, шт.")
+    forecast = models.FloatField("Прогноз, шт.")
+    abs_err = models.FloatField("Σ |ошибка|, шт.")
+    fam_actual = models.FloatField("Факт по семействам, шт.", default=0)
+    fam_forecast = models.FloatField("Прогноз по семействам, шт.", default=0)
+    fam_abs_err = models.FloatField("Σ |ошибка| по семействам, шт.", default=0)
+
+    class Meta:
+        verbose_name = "Отсечка проверки штук"
+        verbose_name_plural = "Отсечки проверки штук"
+        ordering = ["run", "cutoff", "variant"]

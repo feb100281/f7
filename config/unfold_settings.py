@@ -70,6 +70,11 @@ UNFOLD_SETTINGS = {
                         "link": reverse_lazy("admin:catalog_item_changelist"),
                     },
                     {
+                        "title": "Замены номеров",
+                        "icon": "merge",
+                        "link": reverse_lazy("admin:catalog_itemreplacement_changelist"),
+                    },
+                    {
                         "title": "Техника",
                         "icon": "directions_boat",
                         "link": reverse_lazy("admin:catalog_platform_changelist"),

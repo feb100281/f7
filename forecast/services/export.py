@@ -101,6 +101,9 @@ def _params_sheet(ws: Worksheet, run, lt, service_level, hz):
         "1. Прогноз выручки на 6 мес. вперёд (Prophet) — отдельно сервис (наряды) и реализация + розница.",
         "2. Выручка раскладывается по товарным группам — по доле группы в этом же месяце за 2 последних сезона.",
         "3. Внутри группы — по артикулам: по штукам за последние 12 мес. (вместе с гарантией), в штуки по свежей цене.",
+        ("   Старые номера одного товара (779282 → 9779282, масла с теми же характеристиками) посчитаны вместе "
+         "с актуальным номером: прогноз, CV и с/с — по всему семейству, в названии — «[+ старые номера]»."
+         if run.families else "   Каждый номер считается отдельно (без склейки замен номеров)."),
         "4. CV — разброс продаж артикула по 12 полным месяцам, нулевые месяцы входят: чем больше, тем рванее спрос.",
         "5. Страховой запас = z × CV × средний прогноз в месяц × √(срок поставки).",
         "6. Точка заказа = прогноз продаж на срок поставки + страховой запас (вверх до целого).",
@@ -134,7 +137,8 @@ def _params_sheet(ws: Worksheet, run, lt, service_level, hz):
     ws.cell(row=r, column=3, value=text).font = _font(color=MUTED)
 
 
-def _items_sheet(ws: Worksheet, rows, hz, groups):
+def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
+    olds = olds or {}
     months = hz.full[:6]
     _title(ws, "Артикулы", "Прогноз продаж по месяцам, статистика спроса и точка заказа. "
            "Красные колонки — расчёт по параметрам с листа «Параметры».", 0)
@@ -174,7 +178,8 @@ def _items_sheet(ws: Worksheet, rows, hz, groups):
         i = FIRST + n
         st, item = r["stats"], r["item"]
         values = [
-            groups.get(r["group_id"], "Без группы"), item.article, item.name,
+            groups.get(r["group_id"], "Без группы"), item.article,
+            f"{item.name}  [+ старые номера: {', '.join(olds[r['item_id']])}]" if olds.get(r["item_id"]) else item.name,
             item.platform.name if item.platform_id else "",
             r["months12"], st.qty12 if st else 0, st.mean12 if st else 0, st.std12 if st else 0,
             f'=IF(G{i}>0,H{i}/G{i},"")',
@@ -303,7 +308,8 @@ def build_workbook(run, lt: int = stock.LEAD_TIME, service_level: float = stock.
     ws_g = wb.create_sheet("Группы")
     ws_i = wb.create_sheet("Артикулы")
     _params_sheet(ws_p, run, lt, service_level, hz)
-    ref = _items_sheet(ws_i, rows, hz, groups)
+    olds = stock.family_olds([r["item_id"] for r in rows]) if run.families else {}
+    ref = _items_sheet(ws_i, rows, hz, groups, olds)
     _groups_sheet(ws_g, group_names, ref)
     for ws in (ws_p, ws_g, ws_i):
         ws.sheet_view.showGridLines = False

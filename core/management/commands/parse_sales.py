@@ -143,6 +143,12 @@ class Command(JobCommand):
         n = refresh_item_stats()
         self.stdout.write(f"   статистика артикулов обновлена: {n:,}")
 
+        from catalog.services.replacements import apply_rules, rebuild_families
+
+        self.step("Замены номеров (семейства)")
+        apply_rules(log=self.stdout.write)
+        rebuild_families(log=self.stdout.write)
+
     def load_sales(self, lines_df, docs_df):
         from sales.services.load import load_sales
 

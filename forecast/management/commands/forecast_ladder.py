@@ -4,6 +4,7 @@
     python manage.py forecast_ladder
 Параметры задачи:
     run: id прогноза (пусто — последний)
+    families: true — старые номера вместе с актуальными (замены номеров), false — каждый отдельно
 
 Сама запускается в конце «Прогноз: построить». Руками — после переноса артикулов
 между группами: раскладка берёт текущие группы из номенклатуры.
@@ -24,9 +25,10 @@ class Command(JobCommand):
         "по их доле в этом календарном месяце за 2 последних сезона, — затем по артикулам — по штукам "
         "за 12 мес. с гарантией — и переводит в штуки по свежей цене. Результат — «Прогноз → Штуки». "
         "Запускается сама после «Прогноз: построить»; руками — после переноса артикулов между группами.</p>"
-        "<pre>Параметры:\\nrun: id прогноза (пусто — последний)</pre>"
+        "<pre>Параметры:\\nrun: id прогноза (пусто — последний)\\n"
+        "families: true — старые номера считаются вместе с актуальным (замены номеров)</pre>"
     )
-    job_param = {"run": None}
+    job_param = {"run": None, "families": True}
 
     def run(self, params: dict):
         from forecast.models import ForecastRun
@@ -36,5 +38,5 @@ class Command(JobCommand):
         if not run:
             raise ValueError("Прогноза ещё нет — сначала «Прогноз: построить».")
         self.step(f"Лестница: {run}")
-        ladder(run, log=self.stdout.write)
+        ladder(run, log=self.stdout.write, families=params.get("families", True))
         self.ok("Готово")

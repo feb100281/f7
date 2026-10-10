@@ -1,8 +1,13 @@
 -- Лестница: прогноз выручки по рядам → товарные группы → артикулы → штуки.
 --
--- Перед запуском Python задаёт params(run_id, data_end): какой прогноз раскладываем
--- и по какую дату есть факт. Результат — temp-таблицы fc_group и fc_item
--- (их читают ladder_groups.sql / ladder_items.sql), промежуточные веса — витрины mart_fc_*.
+-- Перед запуском Python задаёт params(data_end, families) и temp-таблицу fc_input(series, month, yhat) —
+-- какую выручку раскладываем (ladder_input.sql — из прогноза, ladder_input_backtest.sql — из проверки
+-- на прошлом). Факт берётся только по data_end включительно. Результат — temp-таблицы fc_group
+-- и fc_item (их читают ladder_groups.sql / ladder_items.sql), промежуточные веса — витрины mart_fc_*.
+--
+-- families = true: старые номера считаются как их актуальный номер (Item.family_head, «Замены
+-- номеров»): продажи 779282 идут в 9779282, группа — актуального номера. Тогда и штуки, и цена,
+-- и статистика (CV, последняя себестоимость) — по всему семейству.
 --
 --   ряд → группа:     доля группы в выручке ряда в этом календарном месяце, за 24 полных месяца
 --   группа → артикул: штуки артикула за 12 мес. (с гарантией) к «стоимости» продаж группы
@@ -18,11 +23,11 @@
 -- Группа — текущая из номенклатуры: перенос артикула между группами сразу меняет раскладку.
 
 
--- строки продаж: без возвратов и корректировок
+-- строки продаж: без возвратов и корректировок; артикул — свой или актуальный номер семейства
 create or replace temp view fl as
 select
     case when d.kind = 'service' then 'service' else 'shop' end   as series,
-    l.item_id                                                     as item_id,
+    i.id                                                          as item_id,
     i.group_id                                                    as group_id,
     cast(d.date as date)                                          as date,
     cast(l.qty as double)                                         as qty,
@@ -30,8 +35,12 @@ select
     cast(coalesce(l.cost, 0) as double)                           as cost
 from db.sales_salesline l
 join db.sales_salesdoc d on d.id = l.doc_id
-join db.catalog_item i on i.id = l.item_id
-where d.kind in ('service', 'sale', 'retail');
+join db.catalog_item i0 on i0.id = l.item_id
+cross join params p
+join db.catalog_item i
+    on i.id = case when p.families then coalesce(i0.family_head_id, i0.id) else i0.id end
+where d.kind in ('service', 'sale', 'retail')
+  and cast(d.date as date) <= p.data_end;
 
 
 -- 1. Веса групп по календарным месяцам (2 последних сезона = 24 полных месяца до текущего)
@@ -144,12 +153,12 @@ left join db.mart_fc_price pr on pr.item_id = q.item_id
 where q.qty12 > 0;
 
 
--- 4. Раскладка прогноза
+-- 4. Раскладка прогноза (fc_input готовит ladder_input*.sql)
 create or replace temp table fc_group as
 with fp as (
-    select fp.series, cast(fp.month as date) as month, cast(fp.yhat as double) as yhat
-    from db.forecast_forecastpoint fp, params p
-    where fp.run_id = p.run_id and fp.series in ('service', 'shop')
+    select series, cast(month as date) as month, cast(yhat as double) as yhat
+    from fc_input
+    where series in ('service', 'shop')
 )
 select
     fp.series,

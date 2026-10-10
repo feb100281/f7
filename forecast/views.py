@@ -13,7 +13,8 @@ from datetime import date
 
 from django.contrib import admin
 from django.db import DatabaseError
-from django.db.models import Sum
+from django.db.models import F, Sum
+from django.db.models.functions import Coalesce
 from django.template.response import TemplateResponse
 from django.urls import reverse
 
@@ -273,6 +274,8 @@ def backtest(request):
     pts = _backtest_points(series)
     ctx = {"series": series, "series_label": Series(series).label}
     ctx["saved"] = _saved_vs_fact(series)
+    ctx["qc"] = _qty_check()
+    ctx["qc_url"] = _job_url(request, "forecast_qty_check")
     if not pts:
         return _render(request, "backtest", "Проверка на прошлом", {**ctx, "acc": None})
 
@@ -324,6 +327,18 @@ def backtest(request):
     })
 
 
+def _qty_check():
+    """Последняя проверка штук на прошлом: как сейчас против склейки номеров."""
+    from forecast.models import QtyCheck
+    from forecast.services.qty_check import summary
+
+    try:
+        check = QtyCheck.objects.first()
+        return summary(check) if check else None
+    except DatabaseError:
+        return None
+
+
 def _saved_vs_fact(series):
     """Сохранённые прогнозы на месяцы, по которым уже есть полный факт."""
     actual, last_full, _ = _actual(series)
@@ -350,17 +365,24 @@ def _saved_vs_fact(series):
 # 3. Штуки: лестница по группам и артикулам
 # ---------------------------------------------------------------------------
 
-def _ly_qty(kinds, months, by):
-    """Факт штук за те же месяцы год назад: {group_id | item_id: qty} (группа — текущая)."""
+def _ly_qty(kinds, months, by, families=False):
+    """Факт штук за те же месяцы год назад: {group_id | item_id: qty} (группа — текущая).
+    families: старые номера — в актуальный (как в раскладке прогноза), группа — актуального номера."""
     if not months:
         return {}
     ly = [add_months(m, -12) for m in months]
+    if families:
+        key = (Coalesce("item__family_head_id", "item_id") if by == "item"
+               else Coalesce("item__family_head__group_id", "item__group_id"))
+    else:
+        key = F(f"{by}_id") if by == "item" else F("item__group_id")
     try:
         rows = (MartItemMonth.objects.filter(kind__in=kinds, month__gte=min(ly), month__lte=max(ly))
-                .values(by).annotate(q=Sum("qty")))
-        return {r[by]: float(r["q"] or 0) for r in rows}
+                .annotate(k=key).values("k").annotate(q=Sum("qty")))
+        return {r["k"]: float(r["q"] or 0) for r in rows}
     except DatabaseError:
         return {}
+
 
 
 def _stock_params(request):
@@ -432,7 +454,7 @@ def qty(request):
                 a["rop_cost"] += r["rop_cost"] or 0
             if r["demand"] not in ("редкий", "нет продаж"):
                 a["regular"] += 1
-        ly = _ly_qty(kinds, m6, "item__group")
+        ly = _ly_qty(kinds, m6, "item__group", run.families)
         gnames = {g.pk: g.name for g in ItemGroup.objects.all()}
         total_r6 = sum(a["revenue6"] for a in acc.values()) or 1
         group_rows = sorted((
@@ -444,9 +466,11 @@ def qty(request):
         tot["yoy"] = _ratio(tot["q6"], tot["ly"])
         ctx.update({"group_rows": group_rows, "tot": tot})
     else:
-        ly = _ly_qty(kinds, m6, "item")
+        ly = _ly_qty(kinds, m6, "item", run.families)
+        olds = stock.family_olds([r["item_id"] for r in rows]) if run.families else {}
         for r in rows:
             r["ly"] = ly.get(r["item_id"])
+            r["olds"] = olds.get(r["item_id"], [])
         ctx.update({"item_rows": rows, "group": ItemGroup.objects.filter(pk=group_id).first(),
                     "tot": {k: sum((r[k] or 0) for r in rows) for k in (*keys, "rop", "rop_cost")}})
 

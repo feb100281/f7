@@ -3,6 +3,9 @@
 
 Расчёт — в DuckDB (sql/forecast/ladder.sql), здесь только запуск и запись результата
 в ForecastGroup / ForecastItem. Предыдущая раскладка того же прогноза заменяется.
+
+families=True — старые номера считаются вместе с актуальным (замены номеров): штуки, CV,
+себестоимость и «год назад» — по семейству, прогноз стоит на актуальном номере.
 """
 
 from __future__ import annotations
@@ -24,17 +27,29 @@ def _id(v):
     return int(v) if v is not None else None
 
 
-def ladder(run: ForecastRun, log=print) -> dict:
+USE_FAMILIES = True
+
+
+def compute(duck: Duck, input_sql: str, **params):
+    """Лестница в открытом Duck: params → fc_input (input_sql) → ladder.sql → (группы, артикулы)."""
+    duck.params(**params)
+    duck.run(input_sql)
+    duck.run("forecast/ladder.sql")
+    return duck.df("forecast/ladder_groups.sql"), duck.df("forecast/ladder_items.sql")
+
+
+def ladder(run: ForecastRun, log=print, families: bool | None = None) -> dict:
     started = time.time()
+    families = USE_FAMILIES if families is None else bool(families)
     with Duck() as duck:
-        duck.params(run_id=run.pk, data_end=run.data_end)
-        duck.run("forecast/ladder.sql")
-        groups = duck.df("forecast/ladder_groups.sql")
-        items = duck.df("forecast/ladder_items.sql")
+        groups, items = compute(duck, "forecast/ladder_input.sql",
+                                run_id=run.pk, data_end=run.data_end, families=families)
 
     qty_by_group = items.groupby(["series", "month", items.group_id.fillna(-1)]).qty.sum().to_dict() if len(items) else {}
 
     with transaction.atomic():
+        ForecastRun.objects.filter(pk=run.pk).update(families=families)
+        run.families = families
         ForecastItem.objects.filter(run=run).delete()
         ForecastGroup.objects.filter(run=run).delete()
         ForecastGroup.objects.bulk_create([
@@ -61,5 +76,5 @@ def ladder(run: ForecastRun, log=print) -> dict:
     }
     n = lambda v: f"{v:,.0f}".replace(",", " ")  # noqa: E731
     log(f"   групп × месяцев: {n(result['groups'])}, артикулов: {n(result['items'])}, строк: {n(result['rows'])}, "
-        f"штук всего: {n(result['qty'])}")
+        f"штук всего: {n(result['qty'])}" + (", старые номера — вместе с актуальными" if families else ""))
     return result
