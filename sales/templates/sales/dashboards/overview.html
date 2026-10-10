@@ -19,7 +19,7 @@
     <div class="f7-card">
         <div class="f7-card-title">Каналы продаж</div>
         <table class="f7-table f7-table-dash">
-            <thead><tr><th>Канал</th><th class="f7-right">Выручка, ₽</th><th class="f7-right">Доля</th><th class="f7-right">Маржа</th><th class="f7-right">Документов</th><th class="f7-right">К прошлому году</th></tr></thead>
+            <thead><tr><th>Канал</th><th class="f7-right">Выручка, ₽</th><th class="f7-right">Доля</th><th class="f7-right"><span class="f7-tip" data-tip="Маржинальность: (выручка без НДС − себестоимость) ÷ выручка без НДС. В 1С цены с НДС, себестоимость без НДС, поэтому НДС из выручки сначала убираем: 20% по 2025 г., 22% с 2026 г.">Маржа, %</span></th><th class="f7-right">Документов</th><th class="f7-right">К прошлому году</th></tr></thead>
             <tbody>
             {% for k in kinds_table %}
                 <tr>

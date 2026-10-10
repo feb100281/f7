@@ -43,6 +43,17 @@ DASHBOARDS = [
 
 SALES_KINDS = [DocKind.SERVICE, DocKind.SALE, DocKind.RETAIL]
 
+# В 1С цена продажи — с НДС, себестоимость — без НДС: маржа считается от выручки без НДС
+# (ставка на дату документа: 20% до 2025 г., 22% с 2026 г. — см. sql/marts/_base.sql).
+MARGIN_TIP = ("Выручка без НДС минус себестоимость. В 1С цены продажи — с НДС, а себестоимость — без НДС, "
+              "поэтому НДС из выручки сначала убираем: 20% — по 2025 г., 22% — с 2026 г. "
+              "Маржинальность = маржа ÷ выручка без НДС.")
+
+
+def _margin(r):
+    """Маржинальность строки витрины: (выручка без НДС − себестоимость) / выручка без НДС."""
+    return _ratio((r["revenue_net"] or 0) - (r["cost"] or 0), r["revenue_net"])
+
 
 # ---------------------------------------------------------------------------
 # Общее
@@ -142,15 +153,16 @@ def dashboard(slug, title, use_kind=True):
 def overview(request, f):
     cur_qs = f.qs(MartSalesMonth.objects)
     prev_qs = f.qs(MartSalesMonth.objects, prev=True)
-    fields = ("revenue", "cost", "qty", "docs", "lines", "lines_no_revenue")
+    fields = ("revenue", "revenue_net", "cost", "qty", "docs", "lines", "lines_no_revenue")
     cur, prev = _sum(cur_qs, *fields), _sum(prev_qs, *fields)
     has_prev = f.period.has_prev
 
     kpis = [
         {"title": "Выручка с НДС", "value": cur["revenue"], "fmt": "mln", "yoy": _yoy(cur["revenue"], prev["revenue"]) if has_prev else None},
-        {"title": "Валовая маржа", "value": cur["revenue"] - cur["cost"], "fmt": "mln",
-         "sub": _ratio(cur["revenue"] - cur["cost"], cur["revenue"]), "sub_label": "маржинальность",
-         "yoy": _yoy(cur["revenue"] - cur["cost"], prev["revenue"] - prev["cost"]) if has_prev else None},
+        {"title": "Валовая маржа", "value": cur["revenue_net"] - cur["cost"], "fmt": "mln",
+         "tip": MARGIN_TIP,
+         "sub": _ratio(cur["revenue_net"] - cur["cost"], cur["revenue_net"]), "sub_label": "маржинальность (от выручки без НДС)",
+         "yoy": _yoy(cur["revenue_net"] - cur["cost"], prev["revenue_net"] - prev["cost"]) if has_prev else None},
         {"title": "Продано, шт.", "value": cur["qty"], "fmt": "num", "yoy": _yoy(cur["qty"], prev["qty"]) if has_prev else None},
         {"title": "Документов", "value": cur["docs"], "fmt": "num", "yoy": _yoy(cur["docs"], prev["docs"]) if has_prev else None,
          "sub": _ratio(cur["revenue"], cur["docs"]), "sub_label": "₽ на документ", "sub_fmt": "rub"},
@@ -180,11 +192,12 @@ def overview(request, f):
     # --- таблица каналов
     prev_kind = {r["kind"]: r for r in prev_qs.values("kind").annotate(revenue=Sum("revenue"))}
     kinds = []
-    for r in cur_qs.values("kind").annotate(revenue=Sum("revenue"), cost=Sum("cost"), docs=Sum("docs"), qty=Sum("qty")).order_by("-revenue"):
+    for r in cur_qs.values("kind").annotate(revenue=Sum("revenue"), revenue_net=Sum("revenue_net"), cost=Sum("cost"),
+                                            docs=Sum("docs"), qty=Sum("qty")).order_by("-revenue"):
         kinds.append({
             "kind": r["kind"], "label": DocKind(r["kind"]).label, "color": charts.KIND_COLORS.get(r["kind"]),
             "revenue": r["revenue"], "share": _ratio(r["revenue"], cur["revenue"]),
-            "margin": _ratio((r["revenue"] or 0) - (r["cost"] or 0), r["revenue"]),
+            "margin": _margin(r),
             "docs": r["docs"], "qty": r["qty"],
             "yoy": _yoy(r["revenue"], prev_kind.get(r["kind"], {}).get("revenue")) if has_prev else None,
         })
@@ -221,17 +234,18 @@ def groups(request, f):
         return qs
 
     cur_qs, prev_qs = base(), base(prev=True)
-    total = _sum(cur_qs, "revenue", "cost", "qty")
+    total = _sum(cur_qs, "revenue", "revenue_net", "cost", "qty")
     prev_by = {r["group_id"]: r["revenue"] for r in prev_qs.values("group_id").annotate(revenue=Sum("revenue"))}
 
     rows = []
-    for r in cur_qs.values("group_id").annotate(revenue=Sum("revenue"), cost=Sum("cost"), qty=Sum("qty"), lines=Sum("lines")).order_by("-revenue"):
+    for r in cur_qs.values("group_id").annotate(revenue=Sum("revenue"), revenue_net=Sum("revenue_net"), cost=Sum("cost"),
+                                                qty=Sum("qty"), lines=Sum("lines")).order_by("-revenue"):
         g = groups_by_id.get(r["group_id"])
         rows.append({
             "id": r["group_id"], "name": g.name if g else "— без группы",
             "demand": g.get_demand_type_display() if g else "", "demand_code": g.demand_type if g else "",
             "revenue": r["revenue"], "share": _ratio(r["revenue"], total["revenue"]),
-            "margin": _ratio((r["revenue"] or 0) - (r["cost"] or 0), r["revenue"]),
+            "margin": _margin(r),
             "qty": r["qty"], "lines": r["lines"],
             "yoy": _yoy(r["revenue"], prev_by.get(r["group_id"])) if f.period.has_prev else None,
         })
@@ -361,14 +375,15 @@ def departments(request, f):
         kind_by[r["department_id"]][r["kind"]] = r
 
     rows = []
-    for r in cur_qs.values("department_id").annotate(revenue=Sum("revenue"), cost=Sum("cost"), docs=Sum("docs"), qty=Sum("qty")).order_by("-revenue"):
+    for r in cur_qs.values("department_id").annotate(revenue=Sum("revenue"), revenue_net=Sum("revenue_net"), cost=Sum("cost"),
+                                                     docs=Sum("docs"), qty=Sum("qty")).order_by("-revenue"):
         did = r["department_id"]
         d = depts.get(did)
         k = kind_by[did]
         rows.append({
             "id": did, "name": d.name if d and d.name else "— название не задано", "prefix": d.prefix if d else "—",
             "revenue": r["revenue"], "share": _ratio(r["revenue"], total),
-            "margin": _ratio((r["revenue"] or 0) - (r["cost"] or 0), r["revenue"]),
+            "margin": _margin(r),
             "docs": r["docs"], "orders": (k.get("service") or {}).get("docs") or 0,
             "service_share": _ratio((k.get("service") or {}).get("revenue"), r["revenue"]),
             "yoy": _yoy(r["revenue"], prev_by.get(did)) if f.period.has_prev else None,
@@ -396,6 +411,55 @@ def departments(request, f):
 # 5. Сезонность
 # ---------------------------------------------------------------------------
 
+def season_profile(qs, metric: str, first: date, last: date) -> dict:
+    """Профиль сезона (окт–сен): доля каждого месяца в сезоне, %, по полным сезонам.
+    Общая функция для дашборда «Сезонность» и главной — цифры обязаны совпадать."""
+    seasons = sorted({r for r in qs.values_list("season", flat=True).distinct()})
+    full = [s for s in seasons if date(s, 10, 1) >= first and add_months(date(s, 10, 1), 11) <= last]
+    current = [s for s in seasons if s not in full]
+
+    by_sm = defaultdict(float)
+    for r in qs.values("season", "season_month").annotate(v=Sum(metric)):
+        by_sm[(r["season"], r["season_month"])] = r["v"] or 0
+
+    def profile(s):
+        tot = sum(by_sm[(s, m)] for m in range(1, 13))
+        return [round(100 * by_sm[(s, m)] / tot, 1) if tot else 0 for m in range(1, 13)]
+
+    avg = [round(sum(profile(s)[m] for s in full) / len(full), 1) for m in range(12)] if full else None
+    return {"full": full, "current": current, "profile": profile, "avg": avg}
+
+
+def home_figures() -> dict | None:
+    """Цифры для плиток главной — тем же кодом и с теми же фильтрами по умолчанию, что и дашборды
+    («Последние 12 мес.», все салоны, все каналы). Так плитка и дашборд совпадают до рубля."""
+    from types import SimpleNamespace
+
+    from django.http import QueryDict
+
+    first, last = _bounds()
+    if not first:
+        return None
+    f = parse_filters(SimpleNamespace(GET=QueryDict("")), first, last)
+    cur, prev = _sum(f.qs(MartSalesMonth.objects), "revenue"), _sum(f.qs(MartSalesMonth.objects, prev=True), "revenue")
+    o_cur, o_prev = _sum(f.qs(MartServiceMonth.objects), "orders"), _sum(f.qs(MartServiceMonth.objects, prev=True), "orders")
+    has_prev = f.period.has_prev
+
+    seasons = []
+    for label, kind, url_q in (("Сервис", DocKind.SERVICE, "&kind=service"), ("Все каналы", None, "")):
+        qs = MartSeason.objects.filter(kind=kind) if kind else MartSeason.objects.all()
+        sp = season_profile(qs, "revenue", f.period.first, f.period.last)
+        if sp["avg"]:
+            seasons.append({"label": label, "avg": sp["avg"], "n": len(sp["full"]),
+                            "url": reverse("sales_dashboard_season") + "?metric=revenue" + url_q})
+    return {
+        "period": f.period.label, "prev_period": f.period.prev_label if has_prev else None,
+        "last": last, "revenue": cur["revenue"], "revenue_yoy": _yoy(cur["revenue"], prev["revenue"]) if has_prev else None,
+        "orders": o_cur["orders"], "orders_yoy": _yoy(o_cur["orders"], o_prev["orders"]) if has_prev else None,
+        "seasons": seasons,
+    }
+
+
 @dashboard("season", "Сезонность")
 def season(request, f):
     """Сезонность считается по всей истории (полные сезоны), фильтры — салон, канал, группа."""
@@ -412,25 +476,12 @@ def season(request, f):
     if group_id and group_id.isdigit():
         qs = qs.filter(group_id=int(group_id))
 
-    # полные сезоны: все 12 месяцев есть в данных
-    first, last = f.period.first, f.period.last
-    seasons = sorted({r for r in qs.values_list("season", flat=True).distinct()})
-    full = [s for s in seasons if date(s, 10, 1) >= first and add_months(date(s, 10, 1), 11) <= last]
-    current = [s for s in seasons if s not in full]
-
-    by_sm = defaultdict(float)
-    for r in qs.values("season", "season_month").annotate(v=Sum(metric)):
-        by_sm[(r["season"], r["season_month"])] = r["v"] or 0
-
-    def profile(s):
-        tot = sum(by_sm[(s, m)] for m in range(1, 13))
-        return [round(100 * by_sm[(s, m)] / tot, 1) if tot else 0 for m in range(1, 13)]
+    sp = season_profile(qs, metric, f.period.first, f.period.last)
+    full, current, profile, avg = sp["full"], sp["current"], sp["profile"], sp["avg"]
 
     series = [{"label": f"{s}/{str(s + 1)[2:]}", "data": profile(s), "color": charts.PALETTE[(i + 1) % len(charts.PALETTE)]}
               for i, s in enumerate(full[-4:])]
-    avg = None
-    if full:
-        avg = [round(sum(profile(s)[m] for s in full) / len(full), 1) for m in range(12)]
+    if avg:
         series.insert(0, {"label": "Среднее", "data": avg, "color": charts.PALETTE[0], "fill": True})
     chart_profile = charts.line(SEASON_MONTHS, series, y_suffix="% сезона")
 

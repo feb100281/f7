@@ -1,0 +1,12 @@
+{% load f7_format %}
+{% if group_kpis %}
+<div class="f7-kpis f7-kpis-list">
+    {% for k in group_kpis %}
+        <div class="f7-kpi{% if k.warn %} f7-kpi-warn{% endif %}">
+            <div class="f7-kpi-title">{{ k.title }}</div>
+            <div class="f7-kpi-value">{% if k.url %}<a href="{{ k.url }}">{{ k.value }}</a>{% else %}{{ k.value }}{% endif %}</div>
+            <div class="f7-kpi-foot"><span class="f7-kpi-sub">{{ k.sub }}</span></div>
+        </div>
+    {% endfor %}
+</div>
+{% endif %}

@@ -62,6 +62,16 @@ class Duck:
         """Выполняет все запросы файла (через «;»), возвращает результат последнего."""
         return self.con.execute(sql)
 
+    def params(self, **values) -> None:
+        """Параметры для SQL-файлов: temp-таблица `params` с одной строкой.
+        В SQL: `from params` / `(select run_id from params)`.
+
+            duck.params(run_id=12, data_end=date(2026, 10, 8))
+        """
+        names = list(values)
+        cols = ", ".join(f"? as {n}" for n in names)
+        self.con.execute(f"create or replace temp table params as select {cols}", [values[n] for n in names])
+
     def run(self, name: str) -> None:
         with _in_base_dir():
             self._execute(self.read(name))

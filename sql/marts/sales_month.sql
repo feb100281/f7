@@ -1,4 +1,5 @@
 -- Дашборды «Обзор продаж» и «Салоны»: месяц × канал × подразделение.
+-- revenue — с НДС (как в 1С), revenue_net — без НДС (для маржи: revenue_net − cost).
 -- Вход: temp view lines (_base.sql)
 -- Выход: db.mart_sales_month (marts.MartSalesMonth)
 
@@ -11,6 +12,7 @@ select
     kind,
     department_id,
     sum(revenue)::double                                as revenue,
+    sum(revenue_net)::double                                as revenue_net,
     sum(cost)::double                                   as cost,
     sum(qty)::double                                    as qty,
     count(distinct doc_id)::bigint                      as docs,

@@ -2,7 +2,7 @@
 <div class="f7-kpis">
     {% for k in kpis %}
         <div class="f7-kpi">
-            <div class="f7-kpi-title">{{ k.title }}</div>
+            <div class="f7-kpi-title">{% if k.tip %}<span class="f7-tip" data-tip="{{ k.tip }}">{{ k.title }}</span>{% else %}{{ k.title }}{% endif %}</div>
             <div class="f7-kpi-value">
                 {% if k.fmt == "mln" %}{{ k.value|mln }}{% elif k.fmt == "dec" %}{{ k.value|num:2 }}{% else %}{{ k.value|num }}{% endif %}
             </div>

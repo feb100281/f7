@@ -11,6 +11,7 @@
 {% endblock %}
 
 {% block content %}
+{% load f7_format %}
 <div class="f7-home">
 
     {# --- приветствие --- #}
@@ -22,110 +23,168 @@
             <span class="f7-hero-accent">{{ request.user.first_name|default:request.user.username }}</span>!
         </h1>
         <p class="f7-hero-sub">
-            Рабочее место менеджера: номенклатура и товарные группы, статистика продаж,
-            дальше — прогноз спроса и матрица must have.
+            Рабочее место менеджера: продажи и сервис, товарные группы, прогноз выручки на полгода
+            и расчёт заказа запчастей.
         </p>
         <div class="f7-hero-actions">
-            <a href="{{ links.jobs }}" class="f7-btn f7-btn-red">
-                <span class="material-symbols-outlined">wand_shine</span>Команды
+            <a href="{{ links.overview }}" class="f7-btn f7-btn-red">
+                <span class="material-symbols-outlined">monitoring</span>Обзор продаж
             </a>
-            <a href="{{ links.groups }}" class="f7-btn f7-btn-light">
-                <span class="material-symbols-outlined">category</span>Товарные группы
+            <a href="{{ links.service }}" class="f7-btn f7-btn-light">
+                <span class="material-symbols-outlined">build</span>Сервис
+            </a>
+            <a href="{{ links.forecast }}" class="f7-btn f7-btn-light">
+                <span class="material-symbols-outlined">trending_up</span>Прогноз
+            </a>
+            <a href="{{ links.season }}" class="f7-btn f7-btn-light">
+                <span class="material-symbols-outlined">calendar_month</span>Сезонность
+            </a>
+            <a href="{{ links.order }}" class="f7-btn f7-btn-light">
+                <span class="material-symbols-outlined">inventory_2</span>Расчёт заказа
             </a>
         </div>
+
+        {% if season %}
+            <div class="f7-hero-season">
+                <div class="f7-hero-season-head">
+                    <span class="material-symbols-outlined">calendar_month</span>
+                    Сезон октябрь – сентябрь, доля месяца в выручке сезона · сейчас <b>{{ season.now }}</b>
+                </div>
+                {% for r in season.rows %}
+                    <a href="{{ r.url }}" class="f7-season-row" title="Среднее по {{ r.n }} полным сезонам — как на дашборде «Сезонность» (показатель «Выручка»)">
+                        <div class="f7-season-label">{{ r.label }}</div>
+                        <div class="f7-season-bars">
+                            {% for b in r.bars %}
+                                <div class="f7-season-bar{% if b.now %} is-now{% endif %}" title="{{ b.m }}: {{ b.share|num:1 }}% сезона">
+                                    <span style="height: {{ b.h }}%"></span>
+                                    <em>{{ b.m }}</em>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div class="f7-season-text">
+                            сейчас <b>{{ r.now_share|num:1 }}%</b> сезона ·
+                            пик — <b>{{ r.peak }}</b> ({{ r.peak_share|num:1 }}%) ·
+                            следующие 3 мес. — <b>{{ r.next3|num:1 }}%</b>
+                        </div>
+                    </a>
+                {% endfor %}
+            </div>
+        {% endif %}
     </div>
 
     {# --- сводка --- #}
     <div class="f7-home-heading">
         <span class="material-symbols-outlined">monitoring</span>
-        Сводка
+        Сводка{% if sales %} <span class="f7-muted f7-home-heading-sub">· {{ sales.period }}{% if sales.prev_period %}, сравнение с {{ sales.prev_period }}{% endif %} · данные по {{ sales.last_date|date:"d.m.Y" }}</span>{% endif %}
     </div>
 
     <div class="f7-dash-cards">
-
-        <a href="{{ links.jobs }}" class="f7-dash-card">
+        <a href="{{ links.overview }}" class="f7-dash-card">
             <div class="f7-dash-card-top">
-                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">wand_shine</span></span>
-                <span class="f7-dash-card-title">Команды</span>
+                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">payments</span></span>
+                <span class="f7-dash-card-title">Выручка</span>
                 <span class="material-symbols-outlined f7-dash-card-arrow">arrow_forward</span>
             </div>
-            <div class="f7-dash-card-value">{{ jobs.total|default:0 }}</div>
-            <div class="f7-dash-card-sub">задач в списке команд</div>
-            {% if jobs.running %}
-                <span class="f7-chip f7-chip-warn"><span class="material-symbols-outlined">progress_activity</span>выполняется: {{ jobs.running }}</span>
+            {% if sales %}
+                <div class="f7-dash-card-value">{{ sales.revenue|mln }}</div>
+                <div class="f7-dash-card-sub">с НДС, все салоны и каналы — как на «Обзоре продаж»</div>
+                {% if sales.revenue_yoy is not None %}<span class="f7-chip {% if sales.revenue_yoy >= 0 %}f7-chip-ok{% else %}f7-chip-warn{% endif %}">{{ sales.revenue_yoy|signed }} к прошлому году</span>{% endif %}
             {% else %}
-                <span class="f7-chip f7-chip-ok"><span class="material-symbols-outlined">check_circle</span>ничего не выполняется</span>
+                <div class="f7-dash-card-value">—</div>
+                <div class="f7-dash-card-sub">продажи ещё не загружены</div>
             {% endif %}
         </a>
 
-        <a href="{{ links.jobs }}" class="f7-dash-card">
+        <a href="{{ links.service }}" class="f7-dash-card">
             <div class="f7-dash-card-top">
-                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">history</span></span>
-                <span class="f7-dash-card-title">Последний запуск</span>
+                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">build</span></span>
+                <span class="f7-dash-card-title">Наряды</span>
                 <span class="material-symbols-outlined f7-dash-card-arrow">arrow_forward</span>
             </div>
-            {% if jobs.last %}
-                <div class="f7-dash-card-value">{{ jobs.last.lastrun|date:"d.m H:i" }}</div>
-                <div class="f7-dash-card-sub">{{ jobs.last.name }} · {{ jobs.last.get_status_display|lower }}</div>
+            {% if sales %}
+                <div class="f7-dash-card-value">{{ sales.orders|num }}</div>
+                <div class="f7-dash-card-sub">сервисных нарядов за {{ sales.period }}</div>
+                {% if sales.orders_yoy is not None %}<span class="f7-chip {% if sales.orders_yoy >= 0 %}f7-chip-ok{% else %}f7-chip-warn{% endif %}">{{ sales.orders_yoy|signed }} к прошлому году</span>{% endif %}
             {% else %}
                 <div class="f7-dash-card-value">—</div>
-                <div class="f7-dash-card-sub">команды ещё не запускались</div>
             {% endif %}
-            {% if jobs.failed %}
-                <span class="f7-chip f7-chip-bad"><span class="material-symbols-outlined">error</span>с ошибкой: {{ jobs.failed }}</span>
+        </a>
+
+        <a href="{{ links.forecast }}" class="f7-dash-card">
+            <div class="f7-dash-card-top">
+                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">trending_up</span></span>
+                <span class="f7-dash-card-title">Прогноз на 6 месяцев</span>
+                <span class="material-symbols-outlined f7-dash-card-arrow">arrow_forward</span>
+            </div>
+            {% if forecast %}
+                <div class="f7-dash-card-value">{{ forecast.sum6|mln }}</div>
+                <div class="f7-dash-card-sub">выручка {{ forecast.period }} · от {{ forecast.run.created|date:"d.m.Y" }}</div>
+                {% if forecast.error6 is not None %}<span class="f7-chip f7-chip-ok"><span class="material-symbols-outlined">fact_check</span>ошибка на прошлых данных {{ forecast.error6|pct:0 }}</span>{% endif %}
             {% else %}
-                <span class="f7-chip f7-chip-ok"><span class="material-symbols-outlined">verified</span>ошибок нет</span>
+                <div class="f7-dash-card-value">—</div>
+                <div class="f7-dash-card-sub">прогноз ещё не построен</div>
             {% endif %}
         </a>
 
         <a href="{{ links.groups }}" class="f7-dash-card">
             <div class="f7-dash-card-top">
-                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">inventory_2</span></span>
+                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">category</span></span>
                 <span class="f7-dash-card-title">Номенклатура</span>
                 <span class="material-symbols-outlined f7-dash-card-arrow">arrow_forward</span>
             </div>
-            <div class="f7-dash-card-value">{{ catalog.items|default:0 }}</div>
-            <div class="f7-dash-card-sub">артикулов в {{ catalog.groups|default:0 }} группах · регулярных {{ catalog.regular|default:0 }}</div>
-            {% if catalog.unclassified %}
-                <span class="f7-chip f7-chip-warn"><span class="material-symbols-outlined">help</span>без группы: {{ catalog.unclassified }}</span>
+            <div class="f7-dash-card-value">{{ catalog.items|default:0|num }}</div>
+            <div class="f7-dash-card-sub">артикулов в {{ catalog.groups|default:0 }} товарных группах</div>
+            {% if catalog.unknown %}
+                <span class="f7-chip f7-chip-warn"><span class="material-symbols-outlined">help</span>не распознано: {{ catalog.unknown|num }}</span>
             {% elif catalog.items %}
                 <span class="f7-chip f7-chip-ok"><span class="material-symbols-outlined">verified</span>все артикулы в группах</span>
-            {% else %}
-                <span class="f7-chip f7-chip-warn"><span class="material-symbols-outlined">upload</span>запустите импорт продаж</span>
             {% endif %}
-        </a>
-
-        <a href="{{ links.users }}" class="f7-dash-card">
-            <div class="f7-dash-card-top">
-                <span class="f7-dash-card-icon"><span class="material-symbols-outlined">badge</span></span>
-                <span class="f7-dash-card-title">Пользователи</span>
-                <span class="material-symbols-outlined f7-dash-card-arrow">arrow_forward</span>
-            </div>
-            <div class="f7-dash-card-value">{{ users_count }}</div>
-            <div class="f7-dash-card-sub">активных учётных записей</div>
         </a>
     </div>
 
-    {% if jobs.recent %}
+    {# --- обновления и кто заходил --- #}
+    <div class="f7-grid-home">
         <div class="f7-card">
             <div class="f7-section-heading">
                 <span class="f7-section-number">↻</span>
-                <span class="f7-section-title">Недавние запуски</span>
+                <span class="f7-section-title">Последние обновления</span>
             </div>
-            <table class="f7-table">
-                <tbody>
-                {% for job in jobs.recent %}
-                    <tr>
-                        <td><a href="{% url 'admin:core_jobs_change' job.pk %}">{{ job.name }}</a></td>
-                        <td class="f7-muted">{{ job.command }}</td>
-                        <td><span class="f7-status f7-status-{{ job.status|lower }}">{{ job.get_status_display }}</span></td>
-                        <td class="f7-muted f7-right">{{ job.lastrun|date:"d.m.Y H:i" }}</td>
-                    </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+            {% if updates %}
+                <ul class="f7-feed">
+                    {% for e in updates %}
+                        <li>
+                            <span class="material-symbols-outlined">{{ e.icon }}</span>
+                            <span class="f7-feed-text">
+                                {% if e.who %}<b>{{ e.who }}</b> {% endif %}{% if e.url %}<a href="{{ e.url }}">{{ e.text }}</a>{% else %}{{ e.text }}{% endif %}
+                            </span>
+                            <span class="f7-feed-when">{{ e.when|date:"d.m H:i" }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="f7-muted">Пока ничего не обновлялось.</div>
+            {% endif %}
         </div>
-    {% endif %}
+        <div class="f7-card">
+            <div class="f7-section-heading">
+                <span class="f7-section-number">◉</span>
+                <span class="f7-section-title">Кто заходил</span>
+            </div>
+            {% if visitors %}
+                <ul class="f7-feed">
+                    {% for u in visitors %}
+                        <li>
+                            <span class="material-symbols-outlined">person</span>
+                            <span class="f7-feed-text">{{ u.get_full_name|default:u.username }}</span>
+                            <span class="f7-feed-when">{{ u.last_login|date:"d.m H:i" }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="f7-muted">Ещё никто не заходил.</div>
+            {% endif %}
+        </div>
+    </div>
 
     {# --- разделы --- #}
     <div class="f7-home-heading">
@@ -154,18 +213,21 @@
         {% endfor %}
     </div>
 
-    {# --- как это работает --- #}
+    {# --- помощь --- #}
     <div class="f7-card">
         <div class="f7-section-heading">
-            <span class="f7-section-number">⚙</span>
-            <span class="f7-section-title">Как работают команды</span>
+            <span class="f7-section-number">?</span>
+            <span class="f7-section-title">Как работать с дашбордами</span>
+            <span class="f7-soon">подробная инструкция — скоро</span>
         </div>
-        <ol class="f7-flow">
-            <li><b>Команда</b> — это management-команда Django: <code>python manage.py &lt;команда&gt;</code>.</li>
-            <li><b>Параметры</b> задаются в карточке команды (JSON) — пути к файлам, даты, лимиты.</li>
-            <li><b>Запуск</b> — кнопка «Запустить» в списке: задача идёт в фоне, статус меняется сам.</li>
-            <li><b>Лог</b> — «Открыть лог»: весь вывод команды с отметками старта и результата.</li>
-        </ol>
+        <div class="f7-help-tips">
+            {% for icon, title, text in help_tips %}
+                <div class="f7-help-tip">
+                    <span class="material-symbols-outlined">{{ icon }}</span>
+                    <div><b>{{ title }}</b><span>{{ text }}</span></div>
+                </div>
+            {% endfor %}
+        </div>
     </div>
 
 </div>

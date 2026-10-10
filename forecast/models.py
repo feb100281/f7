@@ -129,3 +129,80 @@ class ForecastPoint(models.Model):
     @property
     def expected(self) -> float:
         return self.actual_before + self.yhat
+
+
+# ---------------------------------------------------------------------------
+# Лестница: прогноз выручки → группы → артикулы → штуки (sql/forecast/ladder.sql)
+# ---------------------------------------------------------------------------
+
+class PriceSource(models.TextChoices):
+    M6 = "6m", "медиана за 6 мес."
+    M12 = "12m", "медиана за 12 мес."
+    LAST = "last", "последняя продажа"
+    GROUP = "group", "медиана группы"
+    NONE = "none", "нет цены"
+
+
+class ForecastGroup(models.Model):
+    """Прогноз выручки ряда, разложенный по товарным группам, и сумма штук по её артикулам."""
+
+    run = models.ForeignKey(ForecastRun, on_delete=models.CASCADE, related_name="groups")
+    series = models.CharField("Ряд", max_length=20, choices=Series.choices)
+    group = models.ForeignKey("catalog.ItemGroup", on_delete=models.SET_NULL, null=True, blank=True,
+                              related_name="+", verbose_name="Товарная группа")
+    month = models.DateField("Месяц")
+    share = models.FloatField("Доля группы в ряду")
+    revenue = models.FloatField("Прогноз выручки")
+    qty = models.FloatField("Прогноз, шт.", default=0)
+
+    class Meta:
+        verbose_name = "Прогноз по группе"
+        verbose_name_plural = "Прогноз по группам"
+        ordering = ["run", "series", "month", "-revenue"]
+        indexes = [models.Index(fields=["run", "group"])]
+
+
+class ForecastItem(models.Model):
+    """Прогноз штук артикула на месяц по ряду. Для месяца, в котором кончается факт, — только остаток."""
+
+    run = models.ForeignKey(ForecastRun, on_delete=models.CASCADE, related_name="items")
+    series = models.CharField("Ряд", max_length=20, choices=Series.choices)
+    item = models.ForeignKey("catalog.Item", on_delete=models.CASCADE, related_name="+", verbose_name="Артикул")
+    group = models.ForeignKey("catalog.ItemGroup", on_delete=models.SET_NULL, null=True, blank=True,
+                              related_name="+", verbose_name="Товарная группа")
+    month = models.DateField("Месяц")
+    qty = models.FloatField("Прогноз, шт.")
+    revenue = models.FloatField("Прогноз выручки")
+    price = models.FloatField("Цена", null=True)
+    price_source = models.CharField("Откуда цена", max_length=10, choices=PriceSource.choices)
+
+    class Meta:
+        verbose_name = "Прогноз по артикулу"
+        verbose_name_plural = "Прогноз по артикулам"
+        ordering = ["run", "series", "month", "-qty"]
+        indexes = [models.Index(fields=["run", "item"]), models.Index(fields=["run", "group"])]
+
+
+class ItemDemandStats(models.Model):
+    """Статистика спроса артикула по всей компании (витрина mart_fc_item_stats, пишет ladder.sql).
+    Спрос — штуки по 12 полным месяцам, нулевые месяцы входят в среднее и разброс."""
+
+    item = models.OneToOneField("catalog.Item", primary_key=True, db_column="item_id", db_constraint=False,
+                                on_delete=models.DO_NOTHING, related_name="+", verbose_name="Артикул")
+    qty12 = models.FloatField("Продано за 12 мес., шт.")
+    months12 = models.IntegerField("Месяцев с продажами из 12")
+    mean12 = models.FloatField("Среднее в месяц")
+    std12 = models.FloatField("Std в месяц")
+    cv12 = models.FloatField("CV", null=True)
+    qty24 = models.FloatField("Продано за 24 мес., шт.")
+    months24 = models.IntegerField("Месяцев с продажами из 24")
+    first_sale = models.DateField("Первая продажа", null=True)
+    last_sale = models.DateField("Последняя продажа", null=True)
+    last_cost = models.FloatField("Себестоимость последняя, ₽/шт.", null=True)
+    last_cost_date = models.DateField("Дата себестоимости", null=True)
+
+    class Meta:
+        managed = False
+        db_table = "mart_fc_item_stats"
+        verbose_name = "Статистика спроса"
+        verbose_name_plural = "Статистика спроса"

@@ -7,6 +7,8 @@ from django.views.generic import RedirectView
 from forecast import views as fc
 from sales.dashboards import views as dash
 
+admin.site.index_title = "Рабочий стол"
+
 urlpatterns = [
     path("", RedirectView.as_view(url="/admin/", permanent=False)),
     # дашборды «Продажи» — до admin.site.urls, чтобы админка не перехватила адрес
@@ -18,6 +20,8 @@ urlpatterns = [
     path("admin/sales/dashboard/season/", dash.season, name="sales_dashboard_season"),
     path("admin/forecast/dashboard/", fc.overview, name="forecast_dashboard_overview"),
     path("admin/forecast/dashboard/backtest/", fc.backtest, name="forecast_dashboard_backtest"),
+    path("admin/forecast/dashboard/qty/", fc.qty, name="forecast_dashboard_qty"),
+    path("admin/forecast/dashboard/qty/export/", fc.qty_export, name="forecast_qty_export"),
     path("admin/", admin.site.urls),
 ]
 

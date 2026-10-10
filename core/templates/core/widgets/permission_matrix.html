@@ -1,0 +1,51 @@
+<div class="f7-perm" data-perm>
+    <div class="f7-perm-presets">
+        <span class="f7-muted">Быстро:</span>
+        <button type="button" class="f7-perm-btn" data-preset="view">только просмотр всего</button>
+        <button type="button" class="f7-perm-btn" data-preset="manager">менеджер: просмотр + правка номенклатуры</button>
+        <button type="button" class="f7-perm-btn" data-preset="none">снять всё</button>
+    </div>
+    <table class="f7-perm-table">
+        <thead><tr>
+            <th>Раздел</th>
+            {% for code, label in widget.actions %}<th class="f7-center"><label><input type="checkbox" data-col="{{ code }}"> {{ label }}</label></th>{% endfor %}
+            {% if widget.has_extra %}<th>Другое</th>{% endif %}
+        </tr></thead>
+        <tbody>
+        {% for r in widget.rows %}
+            {% ifchanged r.app %}<tr class="f7-perm-app"><td colspan="6">{{ r.app }}</td></tr>{% endifchanged %}
+            <tr data-app="{{ r.app }}">
+                <td>{{ r.model|capfirst }}</td>
+                {% for c in r.cells %}
+                    <td class="f7-center">{% if c %}<input type="checkbox" name="{{ widget.name }}" value="{{ c.id }}" title="{{ c.name }}"{% if c.checked %} checked{% endif %} data-action="{{ forloop.counter0 }}">{% else %}<span class="f7-muted">—</span>{% endif %}</td>
+                {% endfor %}
+                {% if widget.has_extra %}<td>{% for e in r.extra %}<label class="f7-perm-extra"><input type="checkbox" name="{{ widget.name }}" value="{{ e.id }}"{% if e.checked %} checked{% endif %}> {{ e.name }}</label>{% empty %}<span class="f7-muted">—</span>{% endfor %}</td>{% endif %}
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+<script>
+(function () {
+    const root = document.currentScript.previousElementSibling;
+    const ACT = {view: 0, add: 1, change: 2, delete: 3};
+    const boxes = (sel) => root.querySelectorAll('tbody input[type=checkbox]' + (sel || ''));
+    root.querySelectorAll('thead input[data-col]').forEach((h) => {
+        h.addEventListener('change', () => boxes(`[data-action="${ACT[h.dataset.col]}"]`).forEach((b) => (b.checked = h.checked)));
+    });
+    const EDIT_APPS = ['Номенклатура'];  // менеджер правит только номенклатуру и группы
+    root.querySelectorAll('[data-preset]').forEach((btn) => btn.addEventListener('click', () => {
+        const p = btn.dataset.preset;
+        root.querySelectorAll('tbody tr[data-app]').forEach((tr) => {
+            tr.querySelectorAll('input[data-action]').forEach((b) => {
+                const a = +b.dataset.action;
+                const sys = ['Пользователи и группы', 'Команды'].includes(tr.dataset.app);
+                b.checked = p === 'view' ? a === 0 && !sys
+                    : p === 'manager' ? !sys && (a === 0 || (a === 2 && EDIT_APPS.includes(tr.dataset.app)))
+                    : false;
+            });
+            tr.querySelectorAll('.f7-perm-extra input').forEach((b) => (b.checked = false));
+        });
+    }));
+})();
+</script>

@@ -134,6 +134,11 @@ UNFOLD_SETTINGS = {
                         "link": reverse_lazy("forecast_dashboard_overview"),
                     },
                     {
+                        "title": "Штуки по артикулам",
+                        "icon": "inventory_2",
+                        "link": reverse_lazy("forecast_dashboard_qty"),
+                    },
+                    {
                         "title": "Проверка на прошлом",
                         "icon": "fact_check",
                         "link": reverse_lazy("forecast_dashboard_backtest"),
@@ -147,18 +152,6 @@ UNFOLD_SETTINGS = {
                         "title": "Все прогнозы",
                         "icon": "history",
                         "link": reverse_lazy("admin:forecast_forecastrun_changelist"),
-                    },
-                ],
-            },
-            {
-                "title": "Витрины",
-                "separator": True,
-                "collapsible": True,
-                "items": [
-                    {
-                        "title": "Артикул × месяц",
-                        "icon": "calendar_view_month",
-                        "link": reverse_lazy("admin:marts_martitemmonth_changelist"),
                     },
                 ],
             },

@@ -1,16 +1,39 @@
-asgiref==3.12.1
+# Все версии закреплены — ровно то, что стоит и работает на локальной машине (pip freeze).
+# Обновлять осознанно: поменять версию → проверить локально → закоммитить.
+
+# Django и админка
 Django==6.1
-django-json-widget==2.1.1
-django-unfold==0.104.1
-python-dotenv==1.2.2
+asgiref==3.12.1
 sqlparse==0.5.5
+django-unfold==0.104.1
+django-json-widget==2.1.1
+python-dotenv==1.2.2
 
-# данные
+# данные: импорт 1С, витрины, выгрузки
 duckdb==1.5.6
-numpy==2.5.2
-openpyxl==3.1.5
 pandas==3.0.5
+numpy==2.5.2
 pyarrow==25.0.1
+openpyxl==3.1.5
+et-xmlfile==2.0.0
+python-dateutil==2.9.0.post0
+six==1.17.0
+tzdata==2025.2
 
-# прогноз
-prophet>=1.1.6
+# прогноз: Prophet и его зависимости
+prophet==1.5.0
+cmdstanpy==1.3.0
+stanio==0.5.1
+holidays==0.106
+matplotlib==3.11.2
+contourpy==1.4.0
+cycler==0.12.1
+fonttools==4.66.1
+kiwisolver==1.5.1
+pillow==12.3.0
+pyparsing==3.3.3
+packaging==26.3
+tqdm==4.70.1
+
+# веб-сервер: на сервере за nginx, локально — для проверки как на сервере
+gunicorn==23.0.0

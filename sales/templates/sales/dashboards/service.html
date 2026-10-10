@@ -40,11 +40,15 @@
 </div>
 
 <div class="f7-card">
-    <div class="f7-card-title">Что уходит в наряды <span class="f7-muted">— топ-30 артикулов по числу нарядов за период; норма = кол-во / все наряды периода</span></div>
+    <div class="f7-card-title">Что уходит в наряды <span class="f7-muted">— 30 артикулов, которые чаще всего ставят в наряды за выбранный период. Наведите на заголовок колонки — там пояснение</span></div>
     <table class="f7-table f7-table-dash">
         <thead><tr>
-            <th>Артикул</th><th>Группа</th><th class="f7-right">Нарядов</th><th class="f7-right">В доле нарядов</th>
-            <th class="f7-right">Кол-во</th><th class="f7-right">На наряд с ним</th><th class="f7-right">Норма на 100 нарядов</th>
+            <th>Артикул</th><th>Группа</th>
+            <th class="f7-right"><span class="f7-tip" data-tip="В скольких нарядах за период этот артикул был хотя бы один раз.">Нарядов</span></th>
+            <th class="f7-right"><span class="f7-tip" data-tip="Какая часть всех нарядов периода с этим артикулом. 12% — примерно в каждом восьмом наряде.">В доле нарядов</span></th>
+            <th class="f7-right"><span class="f7-tip" data-tip="Сколько штук (литров, комплектов) ушло в наряды за период, вместе с гарантией.">Кол-во</span></th>
+            <th class="f7-right"><span class="f7-tip" data-tip="Сколько штук в среднем ставят в одном наряде, где артикул есть. 4 — например, 4 л масла на одну замену.">На наряд с ним</span></th>
+            <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Сколько штук нужно на каждые 100 нарядов: кол-во ÷ все наряды периода × 100. Ждёте 300 нарядов за сезон — держите норму × 3.">Норма на 100 нарядов</span></th>
         </tr></thead>
         <tbody>
         {% for it in items %}

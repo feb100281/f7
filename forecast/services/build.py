@@ -72,6 +72,14 @@ def build(horizon: int = 6, note: str = "", log=print) -> ForecastRun:
         )
         ForecastPoint.objects.bulk_create([ForecastPoint(run=run, **r) for r in rows])
 
+    from .ladder import ladder
+
+    log("   штуки по группам и артикулам (лестница)")
+    try:
+        ladder(run, log=log)
+    except Exception as exc:  # прогноз выручки уже сохранён — лестницу можно перезапустить отдельно
+        log(f"   лестница не посчиталась: {type(exc).__name__}: {exc} — запустите «Прогноз: штуки по артикулам»")
+
     total = [r for r in rows if r["series"] == Series.TOTAL]
     log("   всего по месяцам, млн ₽: " + ", ".join(
         f"{pd.Timestamp(r['month']):%m.%y} {(r['yhat'] + r['actual_before']) / 1e6:.1f}" for r in total))

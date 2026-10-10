@@ -18,14 +18,26 @@ from django.template.response import TemplateResponse
 from django.urls import reverse
 
 from core.models import Jobs
-from forecast.models import SERIES_KINDS, BacktestPoint, ForecastPoint, ForecastRun, Series, TuneRun
+from catalog.models import Item, ItemGroup
+from forecast.models import (
+    SERIES_KINDS,
+    BacktestPoint,
+    ForecastGroup,
+    ForecastItem,
+    ForecastPoint,
+    ForecastRun,
+    PriceSource,
+    Series,
+    TuneRun,
+)
 from forecast.services.engine import params_label
-from marts.models import MartMeta, MartSalesMonth
+from marts.models import MartItemMonth, MartMeta, MartSalesMonth
 from sales.dashboards import charts
 from sales.dashboards.period import add_months, month_label
 
 TABS = [
     ("overview", "Прогноз", "trending_up"),
+    ("qty", "Штуки", "inventory_2"),
     ("backtest", "Проверка на прошлом", "fact_check"),
 ]
 SERIES_COLORS = {Series.SERVICE: "#D3141C", Series.SHOP: "#2a78d6", Series.TOTAL: "#D3141C"}
@@ -334,5 +346,130 @@ def _saved_vs_fact(series):
     return out
 
 
+# ---------------------------------------------------------------------------
+# 3. Штуки: лестница по группам и артикулам
+# ---------------------------------------------------------------------------
+
+def _ly_qty(kinds, months, by):
+    """Факт штук за те же месяцы год назад: {group_id | item_id: qty} (группа — текущая)."""
+    if not months:
+        return {}
+    ly = [add_months(m, -12) for m in months]
+    try:
+        rows = (MartItemMonth.objects.filter(kind__in=kinds, month__gte=min(ly), month__lte=max(ly))
+                .values(by).annotate(q=Sum("qty")))
+        return {r[by]: float(r["q"] or 0) for r in rows}
+    except DatabaseError:
+        return {}
+
+
+def _stock_params(request):
+    """Срок поставки и уровень сервиса: из формы, иначе — последние выбранные (в сессии
+    пользователя), иначе — по умолчанию. Так значения держатся при переходах, пересчёте и выгрузке."""
+    from forecast.services import stock
+
+    saved = request.session.get("f7_stock", {})
+    try:
+        lt = max(1, min(6, int(request.GET.get("lt") or saved.get("lt") or stock.LEAD_TIME)))
+    except (TypeError, ValueError):
+        lt = stock.LEAD_TIME
+    try:
+        sl = max(50.0, min(99.9, float(str(request.GET.get("sl") or saved.get("sl") or stock.SERVICE_LEVEL * 100)
+                                       .replace(",", ".")))) / 100
+    except (TypeError, ValueError):
+        sl = stock.SERVICE_LEVEL
+    request.session["f7_stock"] = {"lt": lt, "sl": round(sl * 100, 1)}
+    return lt, sl
+
+
+def _qty_context(request):
+    series = request.GET.get("series") or Series.TOTAL
+    series = series if series in Series.values else Series.TOTAL
+    runs = list(ForecastRun.objects.all()[:30])
+    run = None
+    if request.GET.get("run", "").isdigit():
+        run = ForecastRun.objects.filter(pk=request.GET["run"]).first()
+    run = run or (runs[0] if runs else None)
+    group_id = request.GET.get("group")
+    group_id = int(group_id) if group_id and group_id.isdigit() else None
+    lt, sl = _stock_params(request)
+    return run, runs, series, group_id, lt, sl
+
+
+def qty(request):
+    from forecast.services import stock
+
+    run, runs, series, group_id, lt, sl = _qty_context(request)
+    procurement = series == Series.TOTAL
+    ctx = {"run": run, "runs": runs, "series": series, "series_label": Series(series).label,
+           "groups_list": ItemGroup.objects.order_by("sort", "name"), "group_id": group_id,
+           "lt": lt, "sl": round(sl * 100, 1), "z": stock.z_value(sl), "rare": stock.RARE_MONTHS,
+           "procurement": procurement, "ladder_url": _job_url(request, "forecast_ladder")}
+    if not run or not run.items.exists():
+        return _render(request, "qty", "Прогноз в штуках", {**ctx, "empty": True})
+
+    rows, hz = stock.item_rows(run, stock.series_names(series), lt, sl, group_id=group_id, procurement=procurement)
+    full = hz.full
+    m3, m6, mlt = full[:3], full[:6], full[:lt]
+    span = lambda ms: f"{month_label(ms[0])} – {month_label(ms[-1])}" if ms else ""  # noqa: E731
+    ctx["cols"] = {"rest": month_label(hz.partial) if hz.partial else None, "m3": span(m3), "m6": span(m6),
+                   "lt": span(mlt)}
+    ctx["horizon6"] = len(m6)
+    if len(full) < lt:
+        ctx["lt_warn"] = f"прогноз есть только на {len(full)} мес. — срок поставки урезан"
+    kinds = SERIES_KINDS[series]
+
+    keys = ("rest", "q3", "q6", "q_lt", "safety", "revenue6")
+    if group_id is None:
+        acc = defaultdict(lambda: {**{k: 0.0 for k in keys}, "rop": 0, "rop_cost": 0.0, "n": 0, "regular": 0})
+        for r in rows:
+            a = acc[r["group_id"]]
+            for k in keys:
+                a[k] += r[k]
+            a["n"] += 1
+            if procurement:
+                a["rop"] += r["rop"]
+                a["rop_cost"] += r["rop_cost"] or 0
+            if r["demand"] not in ("редкий", "нет продаж"):
+                a["regular"] += 1
+        ly = _ly_qty(kinds, m6, "item__group")
+        gnames = {g.pk: g.name for g in ItemGroup.objects.all()}
+        total_r6 = sum(a["revenue6"] for a in acc.values()) or 1
+        group_rows = sorted((
+            {"id": gid, "name": gnames.get(gid, "Без группы"), **a, "share": a["revenue6"] / total_r6,
+             "ly": ly.get(gid), "yoy": _ratio(a["q6"], ly.get(gid) or 0)}
+            for gid, a in acc.items()), key=lambda r: -r["revenue6"])
+        tot = {k: sum(r[k] for r in group_rows) for k in (*keys, "rop", "rop_cost", "n", "regular")}
+        tot["ly"] = sum(r["ly"] or 0 for r in group_rows)
+        tot["yoy"] = _ratio(tot["q6"], tot["ly"])
+        ctx.update({"group_rows": group_rows, "tot": tot})
+    else:
+        ly = _ly_qty(kinds, m6, "item")
+        for r in rows:
+            r["ly"] = ly.get(r["item_id"])
+        ctx.update({"item_rows": rows, "group": ItemGroup.objects.filter(pk=group_id).first(),
+                    "tot": {k: sum((r[k] or 0) for r in rows) for k in (*keys, "rop", "rop_cost")}})
+
+    ctx["export_url"] = reverse("forecast_qty_export") + "?" + request.GET.urlencode()
+    return _render(request, "qty", "Прогноз в штуках", ctx)
+
+
+def qty_export(request):
+    from django.http import HttpResponse
+
+    from forecast.services.export import build_workbook
+
+    run, _, series, _, lt, sl = _qty_context(request)
+    if not run:
+        return HttpResponse("Прогноза ещё нет", status=404)
+    wb, filename = build_workbook(run, lt=lt, service_level=sl)
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f"attachment; filename=\"{filename}\""
+    wb.save(response)
+    return response
+
+
 overview = admin.site.admin_view(overview)
+qty = admin.site.admin_view(qty)
+qty_export = admin.site.admin_view(qty_export)
 backtest = admin.site.admin_view(backtest)

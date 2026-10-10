@@ -54,7 +54,7 @@ GROUPS: dict[str, tuple[str, str]] = {
     "acc_winch":   ("Аксессуары: лебёдки, сцепка, буксир", "accessory"),
     "acc_tuning":  ("Аксессуары: тюнинг и комплекты",    "accessory"),
     "acc_other":   ("Аксессуары: прочие",                "accessory"),
-    "gear":        ("Экипировка и одежда",               "accessory"),
+    "gear":        ("Перчаточные ящики, шлемы, экипировка", "accessory"),
     "fastener":    ("Крепёж и мелочь",                   "fastener"),
     "service":     ("Услуги и служебные позиции",        "other"),
     "other":       ("Прочее (не распознано)",            "other"),

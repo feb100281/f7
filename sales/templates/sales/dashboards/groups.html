@@ -58,7 +58,7 @@
     <table class="f7-table f7-table-dash">
         <thead><tr>
             <th>Группа</th><th>Тип спроса</th><th class="f7-right">Выручка, ₽</th><th style="width: 18%">Доля</th>
-            <th class="f7-right">Маржа</th><th class="f7-right">Кол-во</th><th class="f7-right">Строк</th><th class="f7-right">К прошлому году</th>
+            <th class="f7-right"><span class="f7-tip" data-tip="Маржинальность: (выручка без НДС − себестоимость) ÷ выручка без НДС. В 1С цены с НДС, себестоимость без НДС, поэтому НДС из выручки сначала убираем: 20% по 2025 г., 22% с 2026 г.">Маржа, %</span></th><th class="f7-right">Кол-во</th><th class="f7-right">Строк</th><th class="f7-right">К прошлому году</th>
         </tr></thead>
         <tbody>
         {% for r in rows %}

@@ -86,6 +86,7 @@ class GroupItemsSection(TableSection):
 @admin.register(ItemGroup)
 class ItemGroupAdmin(AppModelAdmin):
     list_sections = [GroupItemsSection]
+    list_before_template = "catalog/admin/group_kpis.html"
     list_per_page = 100
 
     list_display = ["group_col", "demand_col", "items_col", "revenue_col", "regular_col", "manual_col"]
@@ -107,6 +108,42 @@ class ItemGroupAdmin(AppModelAdmin):
             regular_n=Count("items", filter=Q(items__months__gte=Item.REGULAR_MONTHS), distinct=True),
             manual_n=Count("items", filter=Q(items__group_source=GroupSource.MANUAL), distinct=True),
         )
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = {**(extra_context or {}), "group_kpis": self._kpis()}
+        return super().changelist_view(request, extra_context)
+
+    @staticmethod
+    def _kpis() -> list[dict]:
+        """Плитки над списком: сколько групп, насколько хорошо разметка, где деньги."""
+        fmt = lambda v: f"{v:,}".replace(",", " ")  # noqa: E731
+        items = Item.objects.all()
+        n_items = items.count()
+        total = float(items.aggregate(s=Sum("revenue"))["s"] or 0) or 1.0
+        unknown = items.filter(Q(group__isnull=True) | Q(group__code="other"))
+        unknown_n = unknown.count()
+        unknown_rev = float(unknown.aggregate(s=Sum("revenue"))["s"] or 0)
+        manual_n = items.filter(group_source=GroupSource.MANUAL).count()
+        regular_n = items.filter(months__gte=Item.REGULAR_MONTHS).count()
+        top = list(ItemGroup.objects.annotate(r=Sum("items__revenue")).order_by("-r").values_list("name", "r")[:5])
+        top_share = sum(float(r or 0) for _, r in top) / total
+        changelist = reverse("admin:catalog_item_changelist")
+        other = ItemGroup.objects.filter(code="other").first()
+        return [
+            {"title": "Товарных групп", "value": fmt(ItemGroup.objects.count()),
+             "sub": f"артикулов в номенклатуре: {fmt(n_items)}"},
+            {"title": "Не распознано", "value": fmt(unknown_n), "warn": unknown_n > 0,
+             "sub": f"{100 * unknown_rev / total:.1f}% выручки — разметить вручную",
+             "url": f"{changelist}?group__id__exact={other.pk}" if other else None},
+            {"title": "Размечено вручную", "value": fmt(manual_n),
+             "sub": "правки менеджеров — импорт их не трогает",
+             "url": f"{changelist}?group_source__exact={GroupSource.MANUAL}"},
+            {"title": "Регулярные артикулы", "value": fmt(regular_n),
+             "sub": f"с продажами в {Item.REGULAR_MONTHS}+ месяцах за всю историю — "
+                    f"{100 * regular_n / max(n_items, 1):.0f}% номенклатуры"},
+            {"title": "Топ-5 групп", "value": f"{100 * top_share:.0f}% выручки",
+             "sub": ", ".join(name for name, _ in top[:3]) + "…"},
+        ]
 
     def get_readonly_fields(self, request, obj=None):
         # код связывает группу с правилами разметки — после создания не меняем

@@ -11,12 +11,13 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
-from unfold.contrib.filters.admin import ChoicesDropdownFilter
+from unfold.contrib.filters.admin import ChoicesDropdownFilter, RelatedDropdownFilter
 from unfold.decorators import display
 from unfold.sections import TableSection
 
-from core.admins import AppModelAdmin
-from forecast.models import ForecastRun, TuneRun
+from catalog.admin.common import money, num_cell
+from core.admins import AppModelAdmin, FirstCol
+from forecast.models import ForecastGroup, ForecastItem, ForecastRun, TuneRun
 from forecast.services.engine import params_label
 from sales.admin.common import ReadOnlyAdminMixin
 
@@ -138,3 +139,52 @@ class ForecastRunAdmin(ReadOnlyAdminMixin, AppModelAdmin):
     def open_col(self, obj):
         url = reverse("forecast_dashboard_overview") + f"?run={obj.pk}"
         return format_html('<a href="{}" class="f7-link">открыть →</a>', url)
+
+
+class LadderAdmin(ReadOnlyAdminMixin, AppModelAdmin):
+    """Результаты лестницы — только просмотр; удобнее смотреть в «Прогноз → Штуки»."""
+
+    list_display_links = None
+    list_per_page = 100
+
+    @display(description="Месяц", ordering="month")
+    def month_col(self, obj):
+        return f"{obj.month:%m.%Y}"
+
+    @display(description="Прогноз, шт.", ordering="qty")
+    def qty_col(self, obj):
+        return num_cell(f"{obj.qty:,.1f}".replace(",", " ").replace(".", ","))
+
+    @display(description="Выручка, ₽", ordering="revenue")
+    def revenue_col(self, obj):
+        return num_cell(money(obj.revenue))
+
+
+@admin.register(ForecastGroup)
+class ForecastGroupAdmin(LadderAdmin):
+    list_display = ["month_col", "series", "group", "share_col", "revenue_col", "qty_col", "run"]
+    list_select_related = ["group", "run"]
+    list_filter = [("run", RelatedDropdownFilter), ("series", ChoicesDropdownFilter), ("group", RelatedDropdownFilter)]
+    ordering = ["-run", "month", "-revenue"]
+
+    @display(description="Доля в ряду", ordering="share")
+    def share_col(self, obj):
+        return num_cell(_pct(obj.share))
+
+
+@admin.register(ForecastItem)
+class ForecastItemAdmin(LadderAdmin):
+    list_display = ["month_col", "series", "item_col", "group", "qty_col", "revenue_col", "price_col", "run"]
+    list_select_related = ["item", "group", "run"]
+    list_filter = [("run", RelatedDropdownFilter), ("series", ChoicesDropdownFilter),
+                   ("group", RelatedDropdownFilter), ("price_source", ChoicesDropdownFilter)]
+    search_fields = ["item__article", "item__name"]
+    ordering = ["-run", "month", "-qty"]
+
+    @display(description="Артикул", ordering="item__article")
+    def item_col(self, obj):
+        return FirstCol(obj.item.name, obj.item.article).name_subtext
+
+    @display(description="Цена", ordering="price")
+    def price_col(self, obj):
+        return num_cell(money(obj.price), obj.get_price_source_display())

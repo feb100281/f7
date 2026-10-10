@@ -636,6 +636,8 @@
     }
 
     .f7-dash-meta-btn .material-symbols-outlined { font-size: 15px; }
+    button.f7-dash-meta-btn { background: #ffffff; font-size: inherit; cursor: pointer; }
+    .dark button.f7-dash-meta-btn { background: transparent; color: var(--color-base-100); }
     .f7-dash-meta-btn:hover { border-color: var(--color-f7-red); color: var(--color-f7-red); }
 
     .f7-callout {
@@ -691,6 +693,10 @@
     .dark .f7-kpi-value { color: #ffffff; }
     .f7-kpi-foot { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 8px; font-size: 11.5px; }
     .f7-kpi-sub { color: var(--color-f7-muted); }
+    .f7-kpi-value a { color: inherit; }
+    .f7-kpi-value a:hover { color: var(--color-f7-red); }
+    .f7-kpi-warn { border-top-color: var(--color-f7-warn); }
+    .f7-kpis-list { margin-bottom: 16px; }
 
     .f7-delta { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .f7-delta-up { color: var(--color-f7-ok); }
@@ -741,6 +747,89 @@
     }
 
     .f7-bar em { font-style: normal; font-size: 11px; color: var(--color-f7-muted); white-space: nowrap; }
+    .f7-tip { position: relative; cursor: help; border-bottom: 1px dotted currentColor; }
+
+    .f7-tip::after {
+        content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 0; z-index: 50; display: none;
+        width: 260px; padding: 8px 10px; border-radius: 4px; background: #1F2937; color: #ffffff;
+        font-size: 12px; font-weight: 400; line-height: 1.4; text-align: left; text-transform: none;
+        letter-spacing: 0; white-space: normal; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    }
+
+    .f7-right .f7-tip::after, .f7-tip-left::after { left: auto; right: 0; }
+    .f7-tip:hover::after { display: block; }
+    .f7-hero-season {
+        position: relative; z-index: 1; display: block; max-width: 880px; margin-top: 22px; padding: 14px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; background: rgba(255, 255, 255, 0.04);
+        color: #E5E7EB;
+    }
+
+    .f7-season-row { color: inherit; border-radius: 4px; }
+    .f7-season-row:hover .f7-season-label { color: var(--color-f7-red); }
+    .f7-hero-season-head { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 12px; color: #9CA3AF; }
+    .f7-hero-season-head b { color: #ffffff; }
+    .f7-hero-season-head .material-symbols-outlined { font-size: 16px; color: var(--color-f7-red); }
+    .f7-season-row { display: grid; grid-template-columns: 70px 300px 1fr; align-items: end; gap: 14px; margin-top: 6px; }
+    .f7-season-label { padding-bottom: 14px; font-size: 12px; font-weight: 700; color: #ffffff; }
+    .f7-season-bars { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; height: 54px; }
+    .f7-season-bar { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
+    .f7-season-bar span { display: block; width: 100%; min-height: 2px; border-radius: 2px 2px 0 0; background: rgba(255, 255, 255, 0.28); }
+    .f7-season-bar.is-now span { background: var(--color-f7-red); }
+    .f7-season-bar em { margin-top: 3px; font-size: 9px; font-style: normal; color: #6B7280; line-height: 1; }
+    .f7-season-bar.is-now em { color: #ffffff; font-weight: 700; }
+    .f7-season-text { padding-bottom: 14px; font-size: 12px; color: #9CA3AF; }
+    .f7-season-text b { color: #ffffff; }
+    @media (max-width: 900px) { .f7-season-row { grid-template-columns: 1fr; } .f7-season-label, .f7-season-text { padding: 0; } }
+    .f7-home-heading-sub { font-size: 12px; font-weight: 400; }
+    .f7-grid-home { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .f7-grid-home { grid-template-columns: 1fr; } }
+    .f7-feed { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+
+    .f7-feed li {
+        display: flex; align-items: center; gap: 10px; padding: 7px 0;
+        border-bottom: 1px solid var(--color-f7-line); font-size: 13px;
+    }
+
+    .dark .f7-feed li { border-color: var(--color-base-700); }
+    .f7-feed li:last-child { border-bottom: 0; }
+    .f7-feed .material-symbols-outlined { font-size: 18px; color: var(--color-f7-muted); }
+    .f7-feed-text { flex: 1; min-width: 0; }
+    .f7-feed-text a { color: inherit; }
+    .f7-feed-text a:hover { color: var(--color-f7-red); }
+    .f7-feed-when { font-size: 12px; color: var(--color-f7-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .f7-help-tips { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .f7-help-tip { display: flex; gap: 10px; font-size: 13px; }
+    .f7-help-tip .material-symbols-outlined { font-size: 20px; color: var(--color-f7-red); }
+    .f7-help-tip b { display: block; margin-bottom: 2px; }
+    .f7-help-tip span:not(.material-symbols-outlined) { color: var(--color-f7-muted); }
+    .f7-perm { width: 100%; max-width: 900px; }
+    .f7-perm-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; }
+
+    .f7-perm-btn {
+        padding: 5px 10px; border: 1px solid var(--color-f7-line); border-radius: 4px; background: #ffffff;
+        font-size: 12px; cursor: pointer;
+    }
+
+    .f7-perm-btn:hover { border-color: var(--color-f7-red); color: var(--color-f7-red); }
+    .dark .f7-perm-btn { background: var(--color-base-800); border-color: var(--color-base-700); }
+    .f7-perm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+    .f7-perm-table th {
+        padding: 8px; border-bottom: 1px solid var(--color-f7-line); font-size: 12px; font-weight: 600;
+        text-align: left; color: var(--color-f7-muted); white-space: nowrap;
+    }
+
+    .f7-perm-table td { padding: 6px 8px; border-bottom: 1px solid var(--color-f7-line); }
+    .dark .f7-perm-table th, .dark .f7-perm-table td { border-color: var(--color-base-700); }
+
+    .f7-perm-app td {
+        padding-top: 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+        color: var(--color-f7-red); border-bottom: 0;
+    }
+
+    .f7-perm-table th label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+    .f7-perm-table input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--color-f7-red); cursor: pointer; }
+    .f7-perm-extra { display: block; font-size: 12px; }
     .f7-note { margin-top: 10px; font-size: 12px; color: var(--color-f7-muted); }
     .f7-note-top { margin-top: 0; }
     .f7-scroll { max-height: 280px; overflow-y: auto; }

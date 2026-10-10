@@ -1,0 +1,176 @@
+{% extends "sales/dashboards/base.html" %}
+{% load f7_format %}
+
+{% block dash %}
+<form method="get" class="f7-filters">
+    <label>
+        <span>Ряд</span>
+        <select name="series" onchange="this.form.submit()">
+            {% for code, name in series_list %}<option value="{{ code }}"{% if code == series %} selected{% endif %}>{% if code == "total" %}Всего (сервис + продажи){% else %}{{ name }}{% endif %}</option>{% endfor %}
+        </select>
+    </label>
+    <label>
+        <span>Группа</span>
+        <select name="group" onchange="this.form.submit()">
+            <option value="">Все группы</option>
+            {% for g in groups_list %}<option value="{{ g.pk }}"{% if g.pk == group_id %} selected{% endif %}>{{ g.name }}</option>{% endfor %}
+        </select>
+    </label>
+    <label>
+        <span>Срок поставки, мес.</span>
+        <input type="number" name="lt" min="1" max="6" step="1" value="{{ lt }}" style="min-width: 90px" onchange="this.form.submit()">
+    </label>
+    <label>
+        <span>Уровень сервиса, %</span>
+        <input type="number" name="sl" min="50" max="99.9" step="0.5" value="{{ sl }}" style="min-width: 90px" onchange="this.form.submit()">
+    </label>
+    {% if runs %}
+        <label>
+            <span>Прогноз</span>
+            <select name="run" onchange="this.form.submit()">
+                {% for r in runs %}<option value="{{ r.pk }}"{% if r.pk == run.pk %} selected{% endif %}>от {{ r.created|date:"d.m.Y H:i" }} · факт по {{ r.data_end|date:"d.m.Y" }}</option>{% endfor %}
+            </select>
+        </label>
+    {% endif %}
+    <button type="submit" class="f7-btn f7-btn-red">Показать</button>
+    <span class="f7-filters-period">
+        {% if run %}<button type="submit" formaction="{% url 'forecast_qty_export' %}" class="f7-dash-meta-btn" title="Выгрузка с текущими сроком поставки и уровнем сервиса из полей слева"><span class="material-symbols-outlined">download</span>Выгрузить в Excel</button>{% endif %}
+        {% if ladder_url %}<a href="{{ ladder_url }}" class="f7-dash-meta-btn" title="Заново разложить прогноз выручки по группам и артикулам. Нужно после переноса артикулов между группами. Срок поставки и уровень сервиса применяются сразу, без пересчёта."><span class="material-symbols-outlined">refresh</span>Пересобрать раскладку</a>{% endif %}
+    </span>
+</form>
+
+{% if empty %}
+    <div class="f7-callout f7-callout-warn">
+        <span class="material-symbols-outlined">inventory_2</span>
+        <div><b>Штук ещё нет.</b> Они считаются сами после «Построить прогноз». Для уже построенного прогноза — «Пересчитать штуки».</div>
+        {% if ladder_url %}<a href="{{ ladder_url }}" class="f7-btn f7-btn-red">Пересчитать штуки</a>{% endif %}
+    </div>
+{% else %}
+    <div class="f7-note f7-note-top">
+        <b>Прогноз продаж</b> — сколько продадим (выручка разложена по группам и артикулам и переведена в штуки).
+        {% if procurement %}
+            <b>Точка заказа</b> = прогноз продаж на срок поставки ({{ lt }} мес.: {{ cols.lt }}) + страховой запас.
+            Страховой запас = {{ z|num:2 }} × CV × средний прогноз в месяц × √{{ lt }} — покрывает разброс спроса в {{ sl }}% случаев.
+            CV — разброс продаж по 12 месяцам с нулевыми. Редкий спрос (продажи меньше чем в {{ rare }} мес. из 12) — без страхового запаса и с обычным округлением, кандидат «под заказ».
+            Когда остаток (склад + в пути) опускается до точки заказа — пора заказывать.
+        {% else %}
+            Страховой запас и точка заказа считаются только для «Всего» — закупка общая на центральный склад.
+        {% endif %}
+        {% if lt_warn %}<b>{{ lt_warn }}.</b>{% endif %}
+    </div>
+
+    {% if group_rows %}
+        <div class="f7-card">
+            <div class="f7-card-title">{{ series_label }}: по товарным группам
+                <span class="f7-muted">— нажмите группу, чтобы увидеть артикулы</span></div>
+            <div class="f7-scroll-x">
+            <table class="f7-table f7-table-dash">
+                <thead><tr>
+                    <th>Группа</th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="Сколько артикулов группы продавалось за последние 12 месяцев — по ним и строится прогноз.">Артикулов</span></th>
+                    {% if procurement %}<th class="f7-right"><span class="f7-tip" data-tip="Продавались хотя бы в 4 месяцах из 12. Остальные — редкий спрос: без страхового запаса, кандидаты «под заказ».">из них регулярных</span></th>{% endif %}
+                    <th class="f7-right"><span class="f7-tip" data-tip="Сколько штук продадим за эти 6 месяцев: прогноз выручки группы, разложенный по её артикулам.">Прогноз продаж<br>{{ cols.m6 }}, шт.</span></th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="Сколько штук продали за те же месяцы год назад — для сравнения с прогнозом.">Год назад, шт.</span></th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="Прогноз продаж в штуках к факту тех же месяцев год назад: −10% — ждём на 10% меньше.">К прошлому году</span></th>
+                    {% if procurement %}
+                        <th class="f7-right"><span class="f7-tip" data-tip="Сколько продадим, пока едет заказ: прогноз на первые {{ lt }} мес. ({{ cols.lt }}).">Прогноз на срок<br>поставки, шт.</span></th>
+                        <th class="f7-right"><span class="f7-tip" data-tip="Запас на случай, если спрос окажется выше прогноза. Тем больше, чем сильнее «скачут» продажи артикула (CV). Покрывает {{ sl }}% случаев.">Страховой<br>запас, шт.</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Прогноз на срок поставки + страховой запас. Когда остаток на складе и в пути опускается до этой цифры — пора заказывать.">Точка заказа, шт.</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Сколько денег по последней себестоимости лежит в точке заказа.">Точка заказа<br>по с/с, ₽</span></th>
+                    {% endif %}
+                    <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Прогноз выручки группы за 6 месяцев, ₽.">Выручка, {{ horizon6 }} мес.</span></th>
+                </tr></thead>
+                <tbody>
+                {% for r in group_rows %}
+                    <tr>
+                        <td>{% if r.id %}<a href="?{% for k, v in request.GET.items %}{% if k != 'group' %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}group={{ r.id }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</td>
+                        <td class="f7-right">{{ r.n|num }}</td>
+                        {% if procurement %}<td class="f7-right f7-muted">{{ r.regular|num }}</td>{% endif %}
+                        <td class="f7-right"><b>{{ r.q6|num }}</b></td>
+                        <td class="f7-right f7-muted">{{ r.ly|num }}</td>
+                        <td class="f7-right">{{ r.yoy|signed }}</td>
+                        {% if procurement %}
+                            <td class="f7-right">{{ r.q_lt|num }}</td>
+                            <td class="f7-right">{{ r.safety|num }}</td>
+                            <td class="f7-right"><b>{{ r.rop|num }}</b></td>
+                            <td class="f7-right">{{ r.rop_cost|mln }}</td>
+                        {% endif %}
+                        <td class="f7-right">{{ r.revenue6|mln }}</td>
+                    </tr>
+                {% endfor %}
+                <tr>
+                    <td><b>Итого</b></td>
+                    <td class="f7-right"><b>{{ tot.n|num }}</b></td>
+                    {% if procurement %}<td class="f7-right f7-muted">{{ tot.regular|num }}</td>{% endif %}
+                    <td class="f7-right"><b>{{ tot.q6|num }}</b></td>
+                    <td class="f7-right f7-muted">{{ tot.ly|num }}</td>
+                    <td class="f7-right">{{ tot.yoy|signed }}</td>
+                    {% if procurement %}
+                        <td class="f7-right"><b>{{ tot.q_lt|num }}</b></td>
+                        <td class="f7-right"><b>{{ tot.safety|num }}</b></td>
+                        <td class="f7-right"><b>{{ tot.rop|num }}</b></td>
+                        <td class="f7-right"><b>{{ tot.rop_cost|mln }}</b></td>
+                    {% endif %}
+                    <td class="f7-right"><b>{{ tot.revenue6|mln }}</b></td>
+                </tr>
+                </tbody>
+            </table>
+            </div>
+        </div>
+    {% endif %}
+
+    {% if item_rows is not None and group_id %}
+        <div class="f7-card">
+            <div class="f7-card-title">{{ group.name }} · {{ series_label }}: по артикулам
+                <span class="f7-muted">— {{ item_rows|length }} арт.</span>
+                <a class="f7-card-link" href="?{% for k, v in request.GET.items %}{% if k != 'group' %}{{ k }}={{ v|urlencode }}&{% endif %}{% endfor %}">← все группы</a>
+            </div>
+            <div class="f7-scroll-x">
+            <table class="f7-table f7-table-dash">
+                <thead><tr>
+                    <th>Артикул</th><th>Название</th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="В скольких из последних 12 месяцев артикул продавался хотя бы раз. Меньше 4 — редкий спрос.">Мес. с продажами<br>из 12</span></th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="Насколько неровно продаётся: разброс продаж по месяцам к среднему, месяцы без продаж тоже считаются. До 0,5 — ровно, больше 1 — рывками.">CV</span></th>
+                    <th><span class="f7-tip" data-tip="стабильный — CV до 0,5; колеблется — 0,5–1; нерегулярный — больше 1; редкий — продажи меньше чем в 4 мес. из 12.">Спрос</span></th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="Дата последней продажи артикула (сервис, реализация или розница).">Последняя<br>продажа</span></th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="Медиана цены за 6 мес.; если продаж не было — за 12 мес., по последней продаже или по группе. Наведите на цену — откуда она.">Цена</span></th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="Себестоимость штуки в последней продаже. Наведите на число — дата.">С/с послед.</span></th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="Сколько штук продадим за ближайшие 3 месяца.">Прогноз продаж<br>{{ cols.m3 }}</span></th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="Сколько штук продадим за 6 месяцев.">Прогноз продаж<br>{{ cols.m6 }}</span></th>
+                    <th class="f7-right"><span class="f7-tip" data-tip="Продано за те же 6 месяцев год назад.">Год назад</span></th>
+                    {% if procurement %}
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Сколько продадим, пока едет заказ: прогноз на первые {{ lt }} мес.">На срок<br>поставки</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Запас на случай, если спрос выше прогноза: 1,64 × CV × средний прогноз в месяц × √срок поставки. У редкого спроса — 0.">Страховой<br>запас</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="На срок поставки + страховой запас, вверх до целого (у редких — обычное округление). Остаток склад + в пути ниже — пора заказывать.">Точка<br>заказа</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Точка заказа × последняя себестоимость.">Точка заказа<br>по с/с, ₽</span></th>
+                    {% endif %}
+                </tr></thead>
+                <tbody>
+                {% for r in item_rows %}
+                    <tr>
+                        <td class="f7-nowrap"><a href="{% url 'admin:catalog_item_change' r.item.pk %}">{{ r.item.article }}</a></td>
+                        <td><span class="f7-ellipsis" title="{{ r.item.name }}">{{ r.item.name }}</span></td>
+                        <td class="f7-right">{{ r.months12|num }}</td>
+                        <td class="f7-right">{% if r.cv is not None %}{{ r.cv|num:2 }}{% else %}—{% endif %}</td>
+                        <td class="f7-muted f7-nowrap">{{ r.demand }}</td>
+                        <td class="f7-right f7-muted">{{ r.stats.last_sale|date:"d.m.Y" }}</td>
+                        <td class="f7-right" title="{{ r.price_label }}">{{ r.price|rub }}</td>
+                        <td class="f7-right" title="{{ r.stats.last_cost_date|date:'d.m.Y' }}">{{ r.cost|rub }}</td>
+                        <td class="f7-right">{{ r.q3|num:1 }}</td>
+                        <td class="f7-right"><b>{{ r.q6|num:1 }}</b></td>
+                        <td class="f7-right f7-muted">{{ r.ly|num }}</td>
+                        {% if procurement %}
+                            <td class="f7-right">{{ r.q_lt|num:1 }}</td>
+                            <td class="f7-right">{{ r.safety|num:1 }}</td>
+                            <td class="f7-right"><b>{{ r.rop|num }}</b></td>
+                            <td class="f7-right">{{ r.rop_cost|rub }}</td>
+                        {% endif %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    {% endif %}
+{% endif %}
+{% endblock %}
