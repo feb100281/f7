@@ -6,6 +6,9 @@
     host:  ssh-адрес сервера (вход по ssh-ключу, без пароля)
     path:  папка проекта на сервере
     python: python на сервере (по умолчанию .venv/bin/python в папке проекта)
+    restart_gunicorn: true — после применения мягко перезапустить gunicorn (HUP по gunicorn.pid
+            в папке проекта; для данных не обязательно — Django читает базу на каждый запрос,
+            нужно после обновления кода)
 
 Шаги: снимок таблиц данных (номенклатура, продажи, прогнозы, витрины) → gzip → scp на сервер →
 на сервере `manage.py apply_publish` заменяет эти таблицы одной транзакцией.
@@ -36,9 +39,10 @@ class Command(JobCommand):
         "либо новые. Пользователи, группы и права на сервере свои и не трогаются. "
         "Нужен вход на сервер по ssh-ключу (без пароля) и та же версия кода на сервере (git pull + migrate).</p>"
         "<pre>Параметры:\\nhost: ssh-адрес сервера\\npath: папка проекта на сервере\\n"
-        "python: python на сервере (пусто — .venv/bin/python)</pre>"
+        "python: python на сервере (пусто — .venv/bin/python)\n"
+        "restart_gunicorn: мягко перезапустить gunicorn (нужен --pid gunicorn.pid при запуске)</pre>"
     )
-    job_param = {"host": "daria@82.202.197.94", "path": "/home/daria/f7", "python": ""}
+    job_param = {"host": "daria@82.202.197.94", "path": "/home/daria/f7", "python": "", "restart_gunicorn": True}
 
     def _run(self, cmd: list[str], what: str):
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
@@ -74,4 +78,12 @@ class Command(JobCommand):
         self.step("Применение на сервере")
         remote = f"cd {shlex.quote(path)} && {shlex.quote(python)} manage.py apply_publish {REMOTE_FILE}"
         self._run(ssh + [remote], "Сервер не принял данные")
+
+        if params.get("restart_gunicorn"):
+            self.step("Перезапуск gunicorn")
+            pid = f"{shlex.quote(path)}/gunicorn.pid"
+            self._run(ssh + [
+                f"if [ -f {pid} ] && kill -0 $(cat {pid}) 2>/dev/null; then kill -HUP $(cat {pid}) && echo 'перезапущен (HUP)'; "
+                f"else echo 'gunicorn.pid не найден — пропускаю (запускайте gunicorn с --pid gunicorn.pid)'; fi"
+            ], "Не перезапустился")
         self.ok("Опубликовано")
