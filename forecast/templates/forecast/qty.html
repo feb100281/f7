@@ -51,7 +51,9 @@
         {% if procurement %}
             <b>Точка заказа</b> = прогноз продаж на срок поставки ({{ lt }} мес.: {{ cols.lt }}) + страховой запас.
             Страховой запас = {{ z|num:2 }} × CV × средний прогноз в месяц × √{{ lt }} — покрывает разброс спроса в {{ sl }}% случаев.
-            CV — разброс продаж по 12 месяцам с нулевыми. Редкий спрос (продажи меньше чем в {{ rare }} мес. из 12) — без страхового запаса и с обычным округлением, кандидат «под заказ».
+            CV — разброс продаж по 12 месяцам с нулевыми.
+            <b>Редкий спрос</b> (продажи меньше чем в {{ rare }} мес. из 12) запаса не имеет: прогноз 0,3 шт. — это не треть детали, а шанс ≈26%, что её спросят за срок поставки.
+            Если шанс не ниже {{ stock_prob|pct:0 }} и деталь не дороже {{ max_price|rub }} ₽ — держим 1–2 шт. («мин.»), иначе — <b>под заказ</b> клиента: выручка в прогнозе есть, но со склада её не продают.
             Когда остаток (склад + в пути) опускается до точки заказа — пора заказывать.
         {% else %}
             Страховой запас и точка заказа считаются только для «Всего» — закупка общая на центральный склад.
@@ -79,6 +81,7 @@
                         <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Сколько денег по последней себестоимости лежит в точке заказа.">Точка заказа<br>по с/с, ₽</span></th>
                     {% endif %}
                     <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Прогноз выручки группы за 6 месяцев, ₽.">Выручка, {{ horizon6 }} мес.</span></th>
+                    {% if procurement %}<th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Редкие позиции, которые не держим на складе: продажа за срок поставки маловероятна (ниже {{ stock_prob|pct:0 }}) или деталь дороже {{ max_price|rub }} ₽. Их выручка в прогнозе есть, но продаются они под заказ клиента.">Под заказ:<br>арт. · доля выручки</span></th>{% endif %}
                 </tr></thead>
                 <tbody>
                 {% for r in group_rows %}
@@ -96,6 +99,7 @@
                             <td class="f7-right">{{ r.rop_cost|mln }}</td>
                         {% endif %}
                         <td class="f7-right">{{ r.revenue6|mln }}</td>
+                        {% if procurement %}<td class="f7-right f7-muted">{{ r.order_n|num }} · {{ r.order_share|pct:0 }}</td>{% endif %}
                     </tr>
                 {% endfor %}
                 <tr>
@@ -112,6 +116,7 @@
                         <td class="f7-right"><b>{{ tot.rop_cost|mln }}</b></td>
                     {% endif %}
                     <td class="f7-right"><b>{{ tot.revenue6|mln }}</b></td>
+                    {% if procurement %}<td class="f7-right"><b>{{ tot.order_n|num }} · {{ tot.order_share|pct:0 }}</b></td>{% endif %}
                 </tr>
                 </tbody>
             </table>
@@ -141,7 +146,7 @@
                     {% if procurement %}
                         <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Сколько продадим, пока едет заказ: прогноз на первые {{ lt }} мес.">На срок<br>поставки</span></th>
                         <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Запас на случай, если спрос выше прогноза: 1,64 × CV × средний прогноз в месяц × √срок поставки. У редкого спроса — 0.">Страховой<br>запас</span></th>
-                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="На срок поставки + страховой запас, вверх до целого (у редких — обычное округление). Остаток склад + в пути ниже — пора заказывать.">Точка<br>заказа</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Регулярный спрос: на срок поставки + страховой запас, вверх до целого. Редкий: держим 1–2 шт., только если продажа за срок поставки вероятнее {{ stock_prob|pct:0 }} и деталь не дороже {{ max_price|rub }} ₽; иначе — под заказ клиента. Остаток склад + в пути ниже точки — пора заказывать.">Точка<br>заказа</span></th>
                         <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Точка заказа × последняя себестоимость.">Точка заказа<br>по с/с, ₽</span></th>
                     {% endif %}
                 </tr></thead>
@@ -162,7 +167,7 @@
                         {% if procurement %}
                             <td class="f7-right">{{ r.q_lt|num:1 }}</td>
                             <td class="f7-right">{{ r.safety|num:1 }}</td>
-                            <td class="f7-right"><b>{{ r.rop|num }}</b></td>
+                            <td class="f7-right"><span class="f7-num">{% if r.rop %}<b>{{ r.rop|num }}</b>{% if r.decision != "запас" %}<span class="f7-field-sub" title="Редкий спрос: шанс продажи за срок поставки {{ r.p_lt|pct:0 }}">мин. · {{ r.p_lt|pct:0 }}</span>{% endif %}{% else %}<span class="f7-order" title="Шанс, что спросят за срок поставки: {{ r.p_lt|pct:0 }}{% if r.decision == 'под заказ: дорогой' %}; дороже {{ max_price|rub }} ₽ — не держим{% endif %}. На складе не держим — везём под клиента.">{% if r.decision == 'под заказ: дорогой' %}под заказ ₽{% else %}под заказ{% endif %}</span><span class="f7-field-sub">шанс {{ r.p_lt|pct:0 }}</span>{% endif %}</span></td>
                             <td class="f7-right">{{ r.rop_cost|rub }}</td>
                         {% endif %}
                     </tr>

@@ -11,6 +11,11 @@ CV — по 12 полным месяцам факта, нулевые месяц
 в RARE_MONTHS месяцах из 12) — формула для него не годится: страховой запас 0, кандидат «под заказ».
 Новинка (Item.is_new) — CV и порог «редкого» по месяцам с начала продаж; меньше NEW_MIN_MONTHS
 месяцев — «новинка: мало данных», без запаса, решать руками.
+
+Решение по каждому артикулу (decide): «запас» — регулярный спрос; редкий спрос — «держать мин.»
+(1–2 шт.), если продажа за срок поставки вероятнее STOCK_PROB (вероятность = 1 − e^−прогноз), иначе
+«под заказ»; дороже RARE_MAX_PRICE — всегда «под заказ: дорогой». Прогноз в 0,3 шт. — это не треть
+детали на складе, а 26% шанс, что её спросят: такие везут под клиента.
 z — из уровня сервиса: 95% → 1,64 (в 95% случаев запаса хватит до прихода поставки).
 """
 
@@ -31,12 +36,42 @@ RARE_MONTHS = 4        # меньше стольких месяцев с про�
 NEW_MIN_MONTHS = 3     # новинка, продаётся меньше стольких месяцев — мало данных для запаса
 NEW_FEW = "новинка: мало данных"
 NO_SAFETY = ("редкий", "нет продаж", NEW_FEW)   # без страхового запаса, обычное округление
+STOCK_PROB = 0.5          # редкий спрос: держим штуку, если вероятность продажи за срок поставки не ниже
+RARE_MAX_PRICE = 100_000  # редкий спрос дороже этой цены — только под заказ клиента
+
+# Решение по артикулу (то, что видит закупка вместо «прочерка»)
+DEC_STOCK = "запас"              # регулярный спрос: точка заказа с страховым запасом
+DEC_MIN = "держать мин."          # редкий, но продажа за срок поставки вероятна: 1–2 шт. без запаса
+DEC_ORDER = "под заказ"           # редкий: продажа за срок поставки маловероятна — везём под клиента
+DEC_EXPENSIVE = "под заказ: дорогой"  # редкий и дорогой — не замораживаем деньги
 
 DEMAND_CLASSES = [  # (верхняя граница CV, название)
     (0.5, "стабильный"),
     (1.0, "колеблется"),
     (math.inf, "нерегулярный"),
 ]
+
+
+def sale_prob(q: float) -> float:
+    """Вероятность хотя бы одной продажи, если в среднем ждём q штук (редкие продажи — пуассоновские)."""
+    return 1 - math.exp(-max(q, 0.0))
+
+
+def decide(cls: str, q_lt: float, safety: float, price, prob_min: float = STOCK_PROB,
+           max_price: float = RARE_MAX_PRICE) -> tuple[int, str]:
+    """Точка заказа и решение. Регулярный спрос — прогноз на срок поставки + запас, вверх до целого.
+    Редкий — запаса нет: держим штуку, только если продажа за срок поставки вероятнее prob_min
+    и деталь не дороже max_price; иначе — под заказ клиента."""
+    p = sale_prob(q_lt)
+    expensive = bool(price and price > max_price)
+    # регулярный спрос — запас; но дорогую деталь с маловероятной продажей не держим и тут
+    if cls not in NO_SAFETY and not (expensive and p < prob_min):
+        return math.ceil(q_lt + safety - 1e-9), DEC_STOCK
+    if expensive:
+        return 0, DEC_EXPENSIVE
+    if p >= prob_min:
+        return max(1, int(math.floor(q_lt + 0.5))), DEC_MIN
+    return 0, DEC_ORDER
 
 
 def z_value(service_level: float) -> float:
@@ -50,7 +85,7 @@ def demand_class(months12: int | None, cv: float | None, is_new: bool = False, m
         return NEW_FEW   # в т.ч. продажи только в текущем, неполном месяце
     if not months12:
         return "нет продаж"
-    rare = RARE_MONTHS if not is_new else max(1, round(RARE_MONTHS * months_active / 12))
+    rare = RARE_MONTHS if not is_new else max(2, round(RARE_MONTHS * months_active / 12))
     if months12 < rare or cv is None:
         return "редкий"
     return next(name for limit, name in DEMAND_CLASSES if cv <= limit)
@@ -74,7 +109,8 @@ def horizon(run: ForecastRun) -> Horizon:
 
 def item_rows(run: ForecastRun, series_names: list[str], lead_time: int = LEAD_TIME,
               service_level: float = SERVICE_LEVEL, group_id: int | None = None,
-              procurement: bool = True) -> tuple[list[dict], Horizon]:
+              procurement: bool = True, prob_min: float = STOCK_PROB,
+              max_price: float = RARE_MAX_PRICE) -> tuple[list[dict], Horizon]:
     """Строка на артикул: прогноз по месяцам и рядам, статистика спроса, запас, точка заказа."""
     hz = horizon(run)
     qs = run.items.filter(series__in=series_names)
@@ -113,12 +149,9 @@ def item_rows(run: ForecastRun, series_names: list[str], lead_time: int = LEAD_T
         cv = st.cv12 if st else None
         cls = demand_class(months12, cv, item.is_new, months_active)
         safety = z * cv * mean_fc * math.sqrt(lead_time) if procurement and cls not in NO_SAFETY else 0.0
-        if not procurement:
-            rop = None
-        elif cls in NO_SAFETY:
-            rop = int(math.floor(q_lt + 0.5))  # редкий: обычное округление, 0,2 шт. ≠ штука на складе
-        else:
-            rop = math.ceil(q_lt + safety - 1e-9)
+        rop, decision = decide(cls, q_lt, safety, a["price"], prob_min, max_price) if procurement else (None, None)
+        if decision and decision != DEC_STOCK:
+            safety = 0.0
         cost = st.last_cost if st else None
         rows.append({
             **a, "item": item, "stats": st,
@@ -126,6 +159,7 @@ def item_rows(run: ForecastRun, series_names: list[str], lead_time: int = LEAD_T
             "months": full6, "q3": sum(full6[:3]), "q6": q6, "q_lt": q_lt,
             "cv": cv, "months12": months12, "months_active": months_active, "demand": cls,
             "is_new": item.is_new, "new_since": item.new_since, "safety": safety, "rop": rop,
+            "decision": decision, "p_lt": sale_prob(q_lt),
             "cost": cost, "rop_cost": rop * cost if (rop is not None and cost) else None,
             "price_label": PriceSource(a["price_source"]).label if a["price_source"] else "",
         })

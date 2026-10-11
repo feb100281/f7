@@ -426,7 +426,8 @@ def qty(request):
     ctx = {"run": run, "runs": runs, "series": series, "series_label": Series(series).label,
            "groups_list": ItemGroup.objects.order_by("sort", "name"), "group_id": group_id,
            "lt": lt, "sl": round(sl * 100, 1), "z": stock.z_value(sl), "rare": stock.RARE_MONTHS,
-           "procurement": procurement, "ladder_url": _job_url(request, "forecast_ladder")}
+           "procurement": procurement, "ladder_url": _job_url(request, "forecast_ladder"),
+           "stock_prob": stock.STOCK_PROB, "max_price": stock.RARE_MAX_PRICE}
     if not run or not run.items.exists():
         return _render(request, "qty", "Прогноз в штуках", {**ctx, "empty": True})
 
@@ -443,7 +444,8 @@ def qty(request):
 
     keys = ("rest", "q3", "q6", "q_lt", "safety", "revenue6")
     if group_id is None:
-        acc = defaultdict(lambda: {**{k: 0.0 for k in keys}, "rop": 0, "rop_cost": 0.0, "n": 0, "regular": 0, "new": 0})
+        acc = defaultdict(lambda: {**{k: 0.0 for k in keys}, "rop": 0, "rop_cost": 0.0, "n": 0, "regular": 0, "new": 0,
+                                   "order_n": 0, "order_rev": 0.0})
         for r in rows:
             a = acc[r["group_id"]]
             for k in keys:
@@ -453,6 +455,9 @@ def qty(request):
             if procurement:
                 a["rop"] += r["rop"]
                 a["rop_cost"] += r["rop_cost"] or 0
+                if r["decision"] in (stock.DEC_ORDER, stock.DEC_EXPENSIVE):
+                    a["order_n"] += 1
+                    a["order_rev"] += r["revenue6"]
             if r["demand"] not in stock.NO_SAFETY:
                 a["regular"] += 1
         ly = _ly_qty(kinds, m6, "item__group", run.families)
@@ -462,7 +467,10 @@ def qty(request):
             {"id": gid, "name": gnames.get(gid, "Без группы"), **a, "share": a["revenue6"] / total_r6,
              "ly": ly.get(gid), "yoy": _ratio(a["q6"], ly.get(gid) or 0)}
             for gid, a in acc.items()), key=lambda r: -r["revenue6"])
-        tot = {k: sum(r[k] for r in group_rows) for k in (*keys, "rop", "rop_cost", "n", "regular")}
+        for r in group_rows:
+            r["order_share"] = r["order_rev"] / r["revenue6"] if r["revenue6"] else 0
+        tot = {k: sum(r[k] for r in group_rows) for k in (*keys, "rop", "rop_cost", "n", "regular", "order_n", "order_rev")}
+        tot["order_share"] = tot["order_rev"] / tot["revenue6"] if tot["revenue6"] else 0
         tot["ly"] = sum(r["ly"] or 0 for r in group_rows)
         tot["yoy"] = _ratio(tot["q6"], tot["ly"])
         ctx.update({"group_rows": group_rows, "tot": tot})

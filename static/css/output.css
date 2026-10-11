@@ -655,6 +655,8 @@
     .f7-new-inline { margin: 0 0 0 6px; }
     .f7-field-stack .f7-new, .f7-field-stack .f7-family { align-self: flex-start; }
     .f7-row-new td { background: rgba(253, 243, 225, 0.45); }
+    .f7-order { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 11px; font-weight: 600; background: #EEF0F3; color: #4B5563; white-space: nowrap; }
+    .dark .f7-order { background: rgba(255,255,255,0.08); color: #D1D5DB; }
     .dark .f7-row-new td { background: rgba(183, 121, 31, 0.08); }
 
     .f7-filters {
