@@ -42,9 +42,11 @@
             <a href="{{ links.order }}" class="f7-btn f7-btn-light">
                 <span class="material-symbols-outlined">inventory_2</span>Расчёт заказа
             </a>
+            {% if stock_ok %}
             <a href="{{ links.stock }}" class="f7-btn f7-btn-light">
                 <span class="material-symbols-outlined">warehouse</span>Остатки
             </a>
+            {% endif %}
         </div>
 
         {% if season %}
@@ -129,7 +131,8 @@
             {% endif %}
         </a>
 
-        <a href="{% if stock %}{{ stock.url }}{% else %}{{ links.stock_upload }}{% endif %}" class="f7-dash-card">
+        {% if stock_ok %}
+        <a href="{% if stock %}{{ stock.url }}{% else %}{{ links.stock }}{% endif %}" class="f7-dash-card">
             <div class="f7-dash-card-top">
                 <span class="f7-dash-card-icon"><span class="material-symbols-outlined">warehouse</span></span>
                 <span class="f7-dash-card-title">Остатки</span>
@@ -145,6 +148,7 @@
                 <div class="f7-dash-card-sub">остатки не загружены — загрузить файл из 1С</div>
             {% endif %}
         </a>
+        {% endif %}
 
         <a href="{{ links.groups }}" class="f7-dash-card">
             <div class="f7-dash-card-top">

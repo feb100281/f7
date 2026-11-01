@@ -22,7 +22,7 @@ from unfold.widgets import UnfoldAdminCheckboxSelectMultipleWidget
 
 from core.admins import FirstCol
 
-APPS = ["catalog", "sales", "forecast", "core", "auth"]   # порядок разделов в таблице
+APPS = ["catalog", "sales", "forecast", "stock", "core", "auth"]   # порядок разделов в таблице
 ACTIONS = [("view", "Просмотр"), ("add", "Добавление"), ("change", "Изменение"), ("delete", "Удаление")]
 
 

@@ -448,7 +448,8 @@ def qty(request):
     snapshot = _snapshot(request) if procurement else None
     back = request.path + "?" + urlencode([(k, v) for k, v in request.GET.items() if k != "stock"])
     ctx = {"snapshots": list(StockSnapshot.objects.all()[:50]), "snapshot": snapshot, "rv": rv,
-           "upload_url": reverse("admin:stock_stocksnapshot_add") + "?" + urlencode({"next": back}),
+           "upload_url": reverse("admin:stock_stocksnapshot_add") + "?" + urlencode({"next": back})
+           if request.user.has_perm("stock.add_stocksnapshot") else None,
            "run": run, "runs": runs, "series": series, "series_label": Series(series).label,
            "groups_list": ItemGroup.objects.order_by("sort", "name"), "group_id": group_id,
            "lt": lt, "sl": round(sl * 100, 1), "z": stock.z_value(sl), "rare": stock.RARE_MONTHS,

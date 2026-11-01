@@ -167,16 +167,19 @@ UNFOLD_SETTINGS = {
                 "items": [
                     {
                         "title": "Загрузить остатки",
+                        "permission": lambda request: request.user.has_perm("stock.add_stocksnapshot"),
                         "icon": "upload_file",
                         "link": reverse_lazy("admin:stock_stocksnapshot_add"),
                     },
                     {
                         "title": "Остатки по артикулам",
+                        "permission": lambda request: request.user.has_perm("stock.view_stockline"),
                         "icon": "warehouse",
                         "link": reverse_lazy("admin:stock_stockline_changelist"),
                     },
                     {
                         "title": "Срезы по датам",
+                        "permission": lambda request: request.user.has_perm("stock.view_stocksnapshot"),
                         "icon": "event_note",
                         "link": reverse_lazy("admin:stock_stocksnapshot_changelist"),
                     },

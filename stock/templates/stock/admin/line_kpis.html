@@ -18,13 +18,13 @@
             Все срезы: найдите артикул поиском — увидите, как менялся его остаток по датам.
         {% endif %}
     </div>
-    <a href="{{ stock_upload_url }}" class="f7-btn f7-btn-red">Загрузить остатки</a>
+    {% if stock_upload_url %}<a href="{{ stock_upload_url }}" class="f7-btn f7-btn-red">Загрузить остатки</a>{% endif %}
 </div>
 {% else %}
 <div class="f7-callout f7-callout-warn f7-kpis-list">
     <span class="material-symbols-outlined">warehouse</span>
-    <div><b>Остатков ещё нет.</b> Загрузите файл из 1С («Артикул / Номенклатура / Доступно / Поступит») и укажите дату.</div>
-    <a href="{{ stock_upload_url }}" class="f7-btn f7-btn-red">Загрузить остатки</a>
+    <div><b>Остатков ещё нет.</b> {% if stock_upload_url %}Загрузите файл из 1С («Артикул / Номенклатура / Доступно / Поступит») и укажите дату.{% else %}Их загружает администратор.{% endif %}</div>
+    {% if stock_upload_url %}<a href="{{ stock_upload_url }}" class="f7-btn f7-btn-red">Загрузить остатки</a>{% endif %}
 </div>
 {% endif %}
 {% if stock_kpis %}

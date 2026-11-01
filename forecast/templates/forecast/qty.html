@@ -47,7 +47,7 @@
     {% endif %}
     <button type="submit" class="f7-btn f7-btn-red">Показать</button>
     <span class="f7-filters-period">
-        {% if procurement %}<a href="{{ upload_url }}" class="f7-dash-meta-btn" title="Выбрать файл остатков из 1С и указать дату. Каждая загрузка хранится отдельным срезом."><span class="material-symbols-outlined">upload</span>Загрузить остатки</a>{% endif %}
+        {% if procurement and upload_url %}<a href="{{ upload_url }}" class="f7-dash-meta-btn" title="Выбрать файл остатков из 1С и указать дату. Каждая загрузка хранится отдельным срезом."><span class="material-symbols-outlined">upload</span>Загрузить остатки</a>{% endif %}
         {% if run %}<button type="submit" formaction="{% url 'forecast_qty_export' %}" class="f7-dash-meta-btn" title="{% if snapshot %}Первый лист — «К заказу»: только то, что надо заказать по остаткам на {{ snapshot.date|date:'d.m.Y' }}{% else %}Выгрузка с текущими сроком поставки и уровнем сервиса из полей слева{% endif %}"><span class="material-symbols-outlined">download</span>{% if snapshot %}Excel: к заказу{% else %}Выгрузить в Excel{% endif %}</button>{% endif %}
         {% if ladder_url %}<a href="{{ ladder_url }}" class="f7-dash-meta-btn" title="Заново разложить прогноз выручки по группам и артикулам. Нужно после переноса артикулов между группами. Срок поставки и уровень сервиса применяются сразу, без пересчёта."><span class="material-symbols-outlined">refresh</span>Пересобрать раскладку</a>{% endif %}
     </span>
@@ -89,8 +89,8 @@
         {% elif not snapshot %}
             <div class="f7-callout f7-callout-warn">
                 <span class="material-symbols-outlined">warehouse</span>
-                <div><b>Остатки не выбраны.</b> Загрузите остатки из 1С на дату — посчитаем, что и сколько заказать.</div>
-                <a href="{{ upload_url }}" class="f7-btn f7-btn-red">Загрузить остатки</a>
+                <div><b>Остатки не выбраны.</b> {% if upload_url %}Загрузите остатки из 1С на дату — посчитаем, что и сколько заказать.{% else %}Выберите дату остатков сверху — посчитаем, что и сколько заказать.{% endif %}</div>
+                {% if upload_url %}<a href="{{ upload_url }}" class="f7-btn f7-btn-red">Загрузить остатки</a>{% endif %}
             </div>
         {% endif %}
     {% endif %}

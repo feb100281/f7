@@ -279,7 +279,8 @@ class StockLineAdmin(AppModelAdmin):
                          "stock_dates": list(StockSnapshot.objects.values_list("pk", "date")),
                          "stock_date": request.GET.get(DateFilter.parameter_name) or (str(snap.pk) if snap else ""),
                          "stock_params": params,
-                         "stock_upload_url": reverse("admin:stock_stocksnapshot_add")}
+                         "stock_upload_url": reverse("admin:stock_stocksnapshot_add")
+                         if request.user.has_perm("stock.add_stocksnapshot") else None}
         return super().changelist_view(request, extra_context)
 
     @staticmethod

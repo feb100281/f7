@@ -167,7 +167,8 @@ def dashboard_callback(request, context):
         "groups": reverse("admin:catalog_itemgroup_changelist"),
         "items": reverse("admin:catalog_item_changelist"),
     }
-    stock = _safe(_stock)
+    stock_ok = request.user.has_perm("stock.view_stockline")
+    stock = _safe(_stock) if stock_ok else None
     links["stock_upload"] = reverse("admin:stock_stocksnapshot_add")
     links["stock"] = stock["url"] if stock else reverse("admin:stock_stockline_changelist")
     catalog = _safe(_catalog, {})
@@ -180,6 +181,7 @@ def dashboard_callback(request, context):
         "season": season,
         "catalog": catalog,
         "stock": stock,
+        "stock_ok": stock_ok,
         "updates": _safe(lambda: _updates(sales, forecast, stock), []),
         "visitors": _safe(_visitors, []),
         "links": links,
@@ -191,7 +193,8 @@ def dashboard_callback(request, context):
              links["forecast"]),
             ("inventory_2", "Расчёт заказа", "Прогноз в штуках, страховой запас, точка заказа, выгрузка в Excel",
              links["order"]),
-            ("warehouse", "Остатки", "Срезы остатков на дату, что лежит без продаж, загрузка из 1С", links["stock"]),
+            *([("warehouse", "Остатки", "Срезы остатков на дату, что лежит без продаж, загрузка из 1С",
+                links["stock"])] if stock_ok else []),
             ("category", "Товарные группы", "Группы запчастей: разметка, артикулы внутри", links["groups"]),
             ("list_alt", "Номенклатура", "Артикулы, продажи, смена группы", links["items"]),
         ],
