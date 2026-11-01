@@ -4,6 +4,9 @@
 Данные (прогноз по месяцам, статистика спроса) — значениями, расчёт запаса — формулами Excel
 от ячеек на листе «Параметры»: поменяли срок поставки или уровень сервиса — всё пересчиталось.
 Компания целиком (сервис + продажи): закупка общая на центральный склад.
+
+С остатками на дату (StockSnapshot) — ещё колонки «Доступно / В пути / Заказать» (формулами) и
+первый лист «К заказу»: только то, что надо заказать, значениями — по параметрам на момент выгрузки.
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ F_DATE = 'DD.MM.YYYY'
 
 P_LT, P_SL, P_Z, P_RARE = "Параметры!$B$4", "Параметры!$B$5", "Параметры!$B$6", "Параметры!$B$7"
 P_PROB, P_MAXP = "Параметры!$B$8", "Параметры!$B$9"
+P_REV = "Параметры!$B$10"
 
 
 def _font(**kw):
@@ -72,7 +76,7 @@ def _header(ws: Worksheet, row: int, headers: list[tuple[str, int, bool]]):
 
 # ---------------------------------------------------------------------------
 
-def _params_sheet(ws: Worksheet, run, lt, service_level, hz):
+def _params_sheet(ws: Worksheet, run, lt, service_level, hz, snapshot=None, review=stock.REVIEW):
     _title(ws, "FORMULA7 · прогноз продаж запчастей и точка заказа",
            f"Прогноз от {timezone.localtime(run.created):%d.%m.%Y %H:%M}, факт продаж по {run.data_end:%d.%m.%Y}. "
            f"Выгружено {timezone.localtime():%d.%m.%Y %H:%M}.", 4)
@@ -92,6 +96,11 @@ def _params_sheet(ws: Worksheet, run, lt, service_level, hz):
          "Прогноз 0,3 шт. — это шанс 26%, что деталь спросят за срок поставки. Ниже порога — «под заказ» клиента."),
         ("Редкий спрос: дороже этой цены — только под заказ, ₽", stock.RARE_MAX_PRICE, F_RUB, True,
          "Дорогие редкие детали (двигатели, гусеницы, коробки) не держим на складе — везём под клиента."),
+        ("Период до следующего заказа, мес.", review, "0", True,
+         "Заказ покрывает продажи за срок поставки + этот период: до следующего заказа товара хватит."),
+        ("Остатки на дату", snapshot.date if snapshot else "не загружены", F_DATE if snapshot else "@", False,
+         (f"Файл: {snapshot.filename}. Доступно + поступит (в пути), старые номера сложены на актуальный."
+          if snapshot else "Загрузите остатки на «Расчёте заказа» — появятся колонки «Заказать» и лист «К заказу».")),
     ]
     for i, (label, value, fmt, editable, note) in enumerate(rows, start=4):
         ws.cell(row=i, column=1, value=label).font = _font()
@@ -102,7 +111,7 @@ def _params_sheet(ws: Worksheet, run, lt, service_level, hz):
             c.fill = INPUT_FILL
         ws.cell(row=i, column=3, value=note).font = _font(color=MUTED)
 
-    r = 11
+    r = 13
     ws.cell(row=r, column=1, value="Как считается").font = _font(bold=True, size=11)
     steps = [
         "1. Прогноз выручки на 6 мес. вперёд (Prophet) — отдельно сервис (наряды) и реализация + розница.",
@@ -123,6 +132,15 @@ def _params_sheet(ws: Worksheet, run, lt, service_level, hz):
     steps.append("8. НОВИНКИ (строки выделены, у артикула — комментарий): продажи пошли за последние полгода, "
                  "а раньше почти не было. Разброс и спрос — с месяца начала продаж; меньше 3 мес. — "
                  "«новинка: мало данных», без страхового запаса. Прогноз по короткой истории — проверить руками.")
+    if snapshot:
+        steps += [
+            f"9. ЗАКАЗ по остаткам на {snapshot.date:%d.%m.%Y}: позиция = доступно + поступит (в пути).",
+            "   «запас»: позиция не выше точки заказа → заказать = прогноз на (срок поставки + период до "
+            "следующего заказа) + страховой запас − позиция, вверх до целого.",
+            "   «держать мин.»: заказать = точка заказа (1–2 шт.) − позиция. «Под заказ» — не заказываем на склад.",
+            "   Кратность заказа пока не учтена. Лист «К заказу» — по параметрам на момент выгрузки; "
+            "поменяли параметры здесь — смотрите колонку «Заказать» на листе «Артикулы».",
+        ]
     for i, text in enumerate(steps, start=r + 1):
         ws.cell(row=i, column=1, value=text).font = _font()
     r = r + len(steps) + 2
@@ -149,7 +167,7 @@ def _params_sheet(ws: Worksheet, run, lt, service_level, hz):
     ws.cell(row=r, column=3, value=text).font = _font(color=MUTED)
 
 
-def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
+def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None, with_stock=False):
     olds = olds or {}
     months = hz.full[:6]
     _title(ws, "Артикулы", "Прогноз продаж по месяцам, статистика спроса и точка заказа. "
@@ -170,6 +188,13 @@ def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
         ("Прогноз выручки 6 мес., ₽ (у «под заказ» — ожидание)", 16, False),
         ("Решение", 17, True), ("Вероятность продажи за срок поставки", 12, True),
     ]
+    if with_stock:
+        headers += [
+            ("Доступно, шт. (с ст. номерами)", 11, False), ("В пути, шт.", 10, False),
+            ("Доступно + в пути, шт.", 11, False),
+            ("Прогноз на срок поставки + период, шт.", 12, True), ("Заказать, шт.", 10, True),
+            ("Заказать по с/с, ₽", 14, True),
+        ]
     HEAD, FIRST = 4, 5
     _header(ws, HEAD, headers)
     col = {name: i for i, (name, _, _) in enumerate(headers, start=1)}
@@ -187,6 +212,8 @@ def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
     c_total = c_m6 + 1
     c_lt, c_ss, c_rop, c_ropc, c_rev = c_total + 3, c_total + 4, c_total + 5, c_total + 6, c_total + 7
     c_dec, c_prob = c_rev + 1, c_rev + 2
+    c_on, c_inc, c_pos, c_ltr, c_ord, c_ordc = range(c_prob + 1, c_prob + 7)
+    c_last = c_ordc if with_stock else c_prob
 
     for n, r in enumerate(rows):
         i = FIRST + n
@@ -219,6 +246,15 @@ def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
             f'IF(N(M{i})>{P_MAXP},"{stock.DEC_EXPENSIVE}",IF({L(c_rop)}{i}>0,"{stock.DEC_MIN}","{stock.DEC_ORDER}")),"{stock.DEC_STOCK}")',
             f"=1-EXP(-{L(c_lt)}{i})",
         ]
+        if with_stock:
+            on, inc, pos, ltr, rop, ss, dec = (f"{L(c)}{i}" for c in (c_on, c_inc, c_pos, c_ltr, c_rop, c_ss, c_dec))
+            values += [
+                r["on_hand"], r["incoming"], f"={on}+{inc}",
+                f"=SUMPRODUCT(({m1}${HEAD - 1}:{m6}${HEAD - 1}<={P_LT}+{P_REV})*{m1}{i}:{m6}{i})",
+                f'=IF({dec}="{stock.DEC_STOCK}",IF({pos}<={rop},MAX(0,ROUNDUP({ltr}+{ss}-{pos},0)),0),'
+                f'IF({dec}="{stock.DEC_MIN}",MAX(0,ROUNDUP({rop}-{pos},0)),0))',
+                f'=IF(O{i}="",0,{L(c_ord)}{i}*O{i})',
+            ]
         for j, v in enumerate(values, start=1):
             c = ws.cell(row=i, column=j, value=v)
             c.font = _font()
@@ -239,6 +275,14 @@ def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
         ws.cell(row=i, column=c_dec).font = _font(bold=True)
         for j in (c_lt, c_ss, c_rop, c_ropc, c_dec, c_prob):
             ws.cell(row=i, column=j).fill = CALC_FILL
+        if with_stock:
+            for j in (c_on, c_inc, c_pos, c_ltr):
+                ws.cell(row=i, column=j).number_format = F_QTY
+            ws.cell(row=i, column=c_ord).number_format = F_INT
+            ws.cell(row=i, column=c_ord).font = _font(bold=True)
+            ws.cell(row=i, column=c_ordc).number_format = F_RUB
+            for j in (c_ltr, c_ord, c_ordc):
+                ws.cell(row=i, column=j).fill = CALC_FILL
         if r["is_new"]:
             for j in range(1, c_rev + 1):
                 if j not in (c_lt, c_ss, c_rop, c_ropc):
@@ -257,15 +301,18 @@ def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
     # итог
     tr = last + 2
     ws.cell(row=tr, column=1, value="Итого").font = _font(bold=True)
-    for j in (6, *range(c_m1 - 1, c_m6 + 1), c_total, c_total + 1, c_total + 2, c_lt, c_ss, c_rop, c_ropc, c_rev):
+    sums = [6, *range(c_m1 - 1, c_m6 + 1), c_total, c_total + 1, c_total + 2, c_lt, c_ss, c_rop, c_ropc, c_rev]
+    if with_stock:
+        sums += [c_on, c_inc, c_pos, c_ltr, c_ord, c_ordc]
+    for j in sums:
         c = ws.cell(row=tr, column=j, value=f"=SUBTOTAL(9,{L(j)}{FIRST}:{L(j)}{last})")
         c.font = _font(bold=True)
-        c.number_format = F_RUB if j in (c_ropc, c_rev) else F_INT
-    for j in range(1, c_prob + 1):
+        c.number_format = F_RUB if j in (c_ropc, c_rev, c_ordc) else F_INT
+    for j in range(1, c_last + 1):
         ws.cell(row=tr, column=j).fill = TOTAL_FILL
 
     ws.freeze_panes = ws.cell(row=FIRST, column=4)
-    ws.auto_filter.ref = f"A{HEAD}:{L(c_prob)}{last}"
+    ws.auto_filter.ref = f"A{HEAD}:{L(c_last)}{last}"
     for dec, color in ((stock.DEC_ORDER, "6B7280"), (stock.DEC_EXPENSIVE, "6B7280"), (stock.DEC_MIN, "8A5A0B"), (stock.DEC_STOCK, "1B7F3B")):
         ws.conditional_formatting.add(f"{L(c_dec)}{FIRST}:{L(c_dec)}{last}", CellIsRule(
             operator="equal", formula=[f'"{dec}"'], font=Font(name=FONT, color=color, bold=True)))
@@ -281,7 +328,8 @@ def _items_sheet(ws: Worksheet, rows, hz, groups, olds=None):
                                          font=Font(name=FONT, color="8A5A0B", bold=True)))
     return {"first": FIRST, "last": last, "col": {
         "months12": "E", "qty12": "F", "demand": "J", "total": L(c_total), "lt": L(c_lt), "ss": L(c_ss),
-        "rop": L(c_rop), "ropc": L(c_ropc), "rev": L(c_rev), "dec": L(c_dec)}}
+        "rop": L(c_rop), "ropc": L(c_ropc), "rev": L(c_rev), "dec": L(c_dec),
+        "ord": L(c_ord) if with_stock else None, "ordc": L(c_ordc) if with_stock else None}}
 
 
 def _groups_sheet(ws: Worksheet, group_names: list[str], ref: dict):
@@ -295,6 +343,10 @@ def _groups_sheet(ws: Worksheet, group_names: list[str], ref: dict):
         ("Под заказ, артикулов", 11, True), ("Под заказ: прогноз выручки, ₽", 15, True),
         ("Под заказ: доля выручки группы", 11, True),
     ]
+    with_stock = bool(ref["col"].get("ord"))
+    if with_stock:
+        headers += [("Заказать: артикулов", 11, True), ("Заказать, шт.", 11, True), ("Заказать по с/с, ₽", 15, True)]
+    ncol = len(headers)
     HEAD, FIRST = 4, 5
     _header(ws, HEAD, headers)
     f, l, c = ref["first"], ref["last"], ref["col"]
@@ -324,30 +376,94 @@ def _groups_sheet(ws: Worksheet, group_names: list[str], ref: dict):
             f'=SUMIFS({rng(c["rev"])},{rng("A")},A{i},{rng(c["dec"])},"под заказ*")',
             f"=IF(J{i}>0,M{i}/J{i},0)",
         ]
+        if with_stock:
+            values += [
+                f'=COUNTIFS({rng("A")},A{i},{rng(c["ord"])},">0")',
+                f"=SUMIFS({rng(c['ord'])},{rng('A')},A{i})",
+                f"=SUMIFS({rng(c['ordc'])},{rng('A')},A{i})",
+            ]
         for j, v in enumerate(values, start=1):
             cell = ws.cell(row=i, column=j, value=v)
             cell.font = _font(bold=(j == 8))
             cell.border = THIN
-            cell.number_format = {9: F_RUB, 10: F_RUB, 11: F_PCT, 13: F_RUB, 14: F_PCT}.get(j, F_INT)
+            cell.number_format = {9: F_RUB, 10: F_RUB, 11: F_PCT, 13: F_RUB, 14: F_PCT, 17: F_RUB}.get(j, F_INT)
             if 6 <= j <= 9 or j >= 12:
                 cell.fill = CALC_FILL
     ws.cell(row=tr, column=1, value="Итого").font = _font(bold=True)
-    for j in (*range(2, 11), 12, 13):
+    for j in (*range(2, 11), 12, 13, *((15, 16, 17) if with_stock else ())):
         L = get_column_letter(j)
         cell = ws.cell(row=tr, column=j, value=f"=SUM({L}{FIRST}:{L}{last})")
         cell.font = _font(bold=True)
-        cell.number_format = F_RUB if j in (9, 10, 13) else F_INT
+        cell.number_format = F_RUB if j in (9, 10, 13, 17) else F_INT
     c = ws.cell(row=tr, column=14, value=f"=IF(J{tr}>0,M{tr}/J{tr},0)")
     c.font = _font(bold=True)
     c.number_format = F_PCT
-    for j in range(1, 15):
+    for j in range(1, ncol + 1):
         ws.cell(row=tr, column=j).fill = TOTAL_FILL
     ws.freeze_panes = ws.cell(row=FIRST, column=2)
-    ws.auto_filter.ref = f"A{HEAD}:N{last}"
+    ws.auto_filter.ref = f"A{HEAD}:{get_column_letter(ncol)}{last}"
 
 
-def build_workbook(run, lt: int = stock.LEAD_TIME, service_level: float = stock.SERVICE_LEVEL):
-    rows, hz = stock.item_rows(run, stock.series_names(Series.TOTAL), lt, service_level)
+def _sp(v) -> str:
+    return f"{v:,.0f}".replace(",", " ")
+
+
+def _order_sheet(ws: Worksheet, rows, groups, snapshot, lt, service_level, review, olds=None):
+    """Только то, что надо заказать, — значениями по параметрам на момент выгрузки."""
+    olds = olds or {}
+    todo = [r for r in rows if r["order"]]
+    total = sum(r["order_cost"] or 0 for r in todo)
+    _title(ws, f"К заказу · остатки на {snapshot.date:%d.%m.%Y}",
+           f"{len(todo)} арт., {_sp(sum(r['order'] for r in todo))} шт., ≈{_sp(total)} ₽ по последней с/с. "
+           f"Срок поставки {lt} мес. + период до следующего заказа {review} мес., уровень сервиса {service_level:.0%}. "
+           "Значения на момент выгрузки (лист не пересчитывается — для других параметров смотрите «Артикулы»).", 0)
+    headers = [
+        ("Группа", 26, False), ("Артикул", 14, False), ("Название", 44, False), ("Техника", 14, False),
+        ("Решение", 15, False), ("Спрос", 13, False), ("Доступно, шт.", 10, False), ("В пути, шт.", 10, False),
+        ("Точка заказа, шт.", 10, False), (f"Прогноз на {lt}+{review} мес., шт.", 11, False),
+        ("Страховой запас, шт.", 10, False), ("Заказать, шт.", 10, True), ("С/с последняя, ₽/шт.", 12, False),
+        ("Заказать по с/с, ₽", 14, True), ("Прогноз продаж 6 мес., шт.", 11, False),
+    ]
+    HEAD, FIRST = 4, 5
+    _header(ws, HEAD, headers)
+    for n, r in enumerate(todo):
+        i, item = FIRST + n, r["item"]
+        name = f"{item.name}  [+ старые номера: {', '.join(olds[r['item_id']])}]" if olds.get(r["item_id"]) else item.name
+        values = [groups.get(r["group_id"], "Без группы"), item.article, name,
+                  item.platform.name if item.platform_id else "", r["decision"], r["demand"],
+                  r["on_hand"], r["incoming"], r["rop"], r["q_ltr"], r["safety"], r["order"], r["cost"],
+                  r["order_cost"], r["q6"]]
+        for j, v in enumerate(values, start=1):
+            c = ws.cell(row=i, column=j, value=v)
+            c.font = _font(bold=j in (12, 14))
+            c.border = THIN
+            c.number_format = {7: F_QTY, 8: F_QTY, 9: F_INT, 10: F_QTY, 11: F_QTY, 12: F_INT, 13: F_RUB,
+                               14: F_RUB, 15: F_QTY}.get(j, "General")
+            if j in (12, 14):
+                c.fill = CALC_FILL
+        if r["is_new"]:
+            ws.cell(row=i, column=2).font = _font(bold=True, color="8A5A0B")
+            ws.cell(row=i, column=2).comment = Comment("НОВИНКА: короткая история — проверьте количество вручную.", "F7")
+    last = FIRST + max(len(todo), 1) - 1
+    tr = last + 2
+    ws.cell(row=tr, column=1, value="Итого").font = _font(bold=True)
+    for j, fmt in ((12, F_INT), (14, F_RUB)):
+        c = ws.cell(row=tr, column=j, value=f"=SUBTOTAL(9,{get_column_letter(j)}{FIRST}:{get_column_letter(j)}{last})")
+        c.font = _font(bold=True)
+        c.number_format = fmt
+    for j in range(1, len(headers) + 1):
+        ws.cell(row=tr, column=j).fill = TOTAL_FILL
+    ws.freeze_panes = ws.cell(row=FIRST, column=4)
+    ws.auto_filter.ref = f"A{HEAD}:{get_column_letter(len(headers))}{last}"
+
+
+def build_workbook(run, lt: int = stock.LEAD_TIME, service_level: float = stock.SERVICE_LEVEL,
+                   snapshot=None, review: int = stock.REVIEW):
+    from stock.services.load import family_position
+
+    position = family_position(snapshot) if snapshot else None
+    rows, hz = stock.item_rows(run, stock.series_names(Series.TOTAL), lt, service_level,
+                               position=position, review=review)
     groups = {g.pk: g.name for g in ItemGroup.objects.all()}
     # порядок: группы по прогнозной выручке, внутри — артикулы по выручке
     rev_by_group: dict = {}
@@ -359,15 +475,22 @@ def build_workbook(run, lt: int = stock.LEAD_TIME, service_level: float = stock.
     wb = Workbook()
     ws_p = wb.active
     ws_p.title = "Параметры"
+    ws_o = wb.create_sheet("К заказу", 0) if snapshot else None
     ws_g = wb.create_sheet("Группы")
     ws_i = wb.create_sheet("Артикулы")
-    _params_sheet(ws_p, run, lt, service_level, hz)
+    _params_sheet(ws_p, run, lt, service_level, hz, snapshot, review)
     olds = stock.family_olds([r["item_id"] for r in rows]) if run.families else {}
-    ref = _items_sheet(ws_i, rows, hz, groups, olds)
+    ref = _items_sheet(ws_i, rows, hz, groups, olds, with_stock=bool(snapshot))
     _groups_sheet(ws_g, group_names, ref)
-    for ws in (ws_p, ws_g, ws_i):
+    if ws_o is not None:
+        _order_sheet(ws_o, rows, groups, snapshot, lt, service_level, review, olds)
+    active = 0 if snapshot else 1
+    for n, ws in enumerate(wb.worksheets):
         ws.sheet_view.showGridLines = False
-    wb.active = 1
+        ws.sheet_view.tabSelected = n == active
+    wb.active = active
     wb.calculation.fullCalcOnLoad = True
-    filename = f"F7_forecast_{run.data_end:%Y-%m-%d}_LT{lt}_{datetime.now():%H%M}.xlsx"
+    tail = f"_stock{snapshot.date:%Y-%m-%d}" if snapshot else ""
+    filename = f"F7_order_{run.data_end:%Y-%m-%d}_LT{lt}{tail}_{datetime.now():%H%M}.xlsx" if snapshot else \
+        f"F7_forecast_{run.data_end:%Y-%m-%d}_LT{lt}_{datetime.now():%H%M}.xlsx"
     return wb, filename

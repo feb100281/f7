@@ -96,7 +96,26 @@ def _catalog() -> dict:
     }
 
 
-def _updates(sales, forecast) -> list[dict]:
+def _stock() -> dict | None:
+    """Последний срез остатков; «к заказу» — по последнему прогнозу при параметрах по умолчанию
+    (считается один раз на пару срез + прогноз и хранится в срезе)."""
+    from stock.models import StockSnapshot
+    from stock.services.load import order_summary
+
+    snap = StockSnapshot.objects.first()
+    if snap is None:
+        return None
+    try:
+        order_summary(snap)
+    except Exception:  # noqa: BLE001 — прогноза нет / не разложен: плитка без «к заказу»
+        pass
+    lines = reverse("admin:stock_stockline_changelist")
+    return {"snap": snap, "url": f"{lines}?date={snap.pk}", "dead_url": f"{lines}?date={snap.pk}&state=dead",
+            "order_url": reverse("forecast_dashboard_qty") + f"?stock={snap.pk}",
+            "age": (timezone.localdate() - snap.date).days}
+
+
+def _updates(sales, forecast, stock=None) -> list[dict]:
     """Лента: когда обновлялись данные и прогноз, что меняли руками в админке."""
     events = []
     if sales:
@@ -108,6 +127,11 @@ def _updates(sales, forecast) -> list[dict]:
         events.append({"when": run.created, "icon": "trending_up", "who": None,
                        "text": f"Построен прогноз по данным на {run.data_end:%d.%m.%Y}",
                        "url": reverse("forecast_dashboard_overview")})
+    if stock:
+        snap = stock["snap"]
+        events.append({"when": snap.uploaded, "icon": "warehouse", "who": snap.uploaded_by or None,
+                       "text": f"загружены остатки на {snap.date:%d.%m.%Y} — {snap.lines_n} арт.",
+                       "url": stock["url"]})
     for e in LogEntry.objects.select_related("user", "content_type").order_by("-action_time")[:8]:
         verb = {1: "добавил", 2: "изменил", 3: "удалил"}.get(e.action_flag, "изменил")
         what = e.content_type.name if e.content_type else ""
@@ -143,6 +167,9 @@ def dashboard_callback(request, context):
         "groups": reverse("admin:catalog_itemgroup_changelist"),
         "items": reverse("admin:catalog_item_changelist"),
     }
+    stock = _safe(_stock)
+    links["stock_upload"] = reverse("admin:stock_stocksnapshot_add")
+    links["stock"] = stock["url"] if stock else reverse("admin:stock_stockline_changelist")
     catalog = _safe(_catalog, {})
     if catalog.get("other_id"):
         links["unknown"] = f"{links['items']}?group__id__exact={catalog['other_id']}"
@@ -152,7 +179,8 @@ def dashboard_callback(request, context):
         "forecast": forecast,
         "season": season,
         "catalog": catalog,
-        "updates": _safe(lambda: _updates(sales, forecast), []),
+        "stock": stock,
+        "updates": _safe(lambda: _updates(sales, forecast, stock), []),
         "visitors": _safe(_visitors, []),
         "links": links,
         "sections": [
@@ -163,12 +191,12 @@ def dashboard_callback(request, context):
              links["forecast"]),
             ("inventory_2", "Расчёт заказа", "Прогноз в штуках, страховой запас, точка заказа, выгрузка в Excel",
              links["order"]),
+            ("warehouse", "Остатки", "Срезы остатков на дату, что лежит без продаж, загрузка из 1С", links["stock"]),
             ("category", "Товарные группы", "Группы запчастей: разметка, артикулы внутри", links["groups"]),
             ("list_alt", "Номенклатура", "Артикулы, продажи, смена группы", links["items"]),
         ],
         "roadmap": [
             ("menu_book", "Цифровые каталоги", "Схемы и номера деталей по технике"),
-            ("warehouse", "Остатки", "Склад и салоны — сравнение с точкой заказа"),
             ("autorenew", "Анализ оборачиваемости", "Сколько дней лежит запас, что залежалось"),
             ("send", "Telegram-бот", "Прогноз, точка заказа и продажи по артикулу — прямо в Telegram"),
             ("smart_toy", "ИИ-помощник", "Вопросы по продажам и прогнозу обычным языком"),

@@ -1,0 +1,40 @@
+{% if stock_dates %}
+<div class="f7-callout f7-callout-info f7-kpis-list">
+    <span class="material-symbols-outlined">warehouse</span>
+    <div>
+        <form method="get" class="f7-filters" style="margin:0;padding:0;border:0;background:none">
+            {% for k, v in stock_params %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+            <label>
+                <span>Остатки на дату</span>
+                <select name="date" onchange="this.form.submit()">
+                    {% for pk, d in stock_dates %}<option value="{{ pk }}"{% if stock_date == pk|stringformat:"s" %} selected{% endif %}>{{ d|date:"d.m.Y" }}</option>{% endfor %}
+                    <option value="all"{% if stock_date == "all" %} selected{% endif %}>Все даты (история)</option>
+                </select>
+            </label>
+        </form>
+        {% if stock_snap %}
+            {% if stock_snap.filename %}Файл: {{ stock_snap.filename }}. {% endif %}Остаток — по всей компании, «В пути» — уже заказано и едет.
+        {% else %}
+            Все срезы: найдите артикул поиском — увидите, как менялся его остаток по датам.
+        {% endif %}
+    </div>
+    <a href="{{ stock_upload_url }}" class="f7-btn f7-btn-red">Загрузить остатки</a>
+</div>
+{% else %}
+<div class="f7-callout f7-callout-warn f7-kpis-list">
+    <span class="material-symbols-outlined">warehouse</span>
+    <div><b>Остатков ещё нет.</b> Загрузите файл из 1С («Артикул / Номенклатура / Доступно / Поступит») и укажите дату.</div>
+    <a href="{{ stock_upload_url }}" class="f7-btn f7-btn-red">Загрузить остатки</a>
+</div>
+{% endif %}
+{% if stock_kpis %}
+<div class="f7-kpis f7-kpis-list">
+    {% for k in stock_kpis %}
+        <div class="f7-kpi{% if k.warn %} f7-kpi-warn{% endif %}">
+            <div class="f7-kpi-title">{{ k.title }}</div>
+            <div class="f7-kpi-value">{% if k.url %}<a href="{{ k.url }}">{{ k.value }}</a>{% else %}{{ k.value }}{% endif %}</div>
+            <div class="f7-kpi-foot"><span class="f7-kpi-sub">{{ k.sub }}</span></div>
+        </div>
+    {% endfor %}
+</div>
+{% endif %}

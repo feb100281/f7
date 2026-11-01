@@ -1,7 +1,7 @@
 """
 Публикация данных с локальной машины на сервер. Локальная база — правда, сервер только показывает.
 
-    локально:  snapshot()  — таблицы данных (catalog, sales, forecast, витрины mart_*) в отдельный
+    локально:  snapshot()  — таблицы данных (catalog, sales, forecast, stock, витрины mart_*) в отдельный
                              SQLite-файл, сжатый gzip; пользователи, сессии и команды не попадают
     сервер:    apply()     — в одной транзакции заменяет эти таблицы своими копиями из файла
 
@@ -22,9 +22,9 @@ import tempfile
 import time
 from pathlib import Path
 
-DATA_PREFIXES = ("catalog_", "sales_", "forecast_", "mart_")
+DATA_PREFIXES = ("catalog_", "sales_", "forecast_", "stock_", "mart_")
 MART_PREFIX = "mart_"
-APPS = ("catalog", "sales", "forecast", "marts")
+APPS = ("catalog", "sales", "forecast", "marts", "stock")
 
 
 def _n(v: int) -> str:

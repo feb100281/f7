@@ -161,6 +161,28 @@ UNFOLD_SETTINGS = {
                 ],
             },
             {
+                "title": "Остатки",
+                "separator": True,
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "Загрузить остатки",
+                        "icon": "upload_file",
+                        "link": reverse_lazy("admin:stock_stocksnapshot_add"),
+                    },
+                    {
+                        "title": "Остатки по артикулам",
+                        "icon": "warehouse",
+                        "link": reverse_lazy("admin:stock_stockline_changelist"),
+                    },
+                    {
+                        "title": "Срезы по датам",
+                        "icon": "event_note",
+                        "link": reverse_lazy("admin:stock_stocksnapshot_changelist"),
+                    },
+                ],
+            },
+            {
                 "title": "Система",
                 "separator": True,
                 "collapsible": True,

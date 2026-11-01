@@ -24,6 +24,19 @@
         <span>Уровень сервиса, %</span>
         <input type="number" name="sl" min="50" max="99.9" step="0.5" value="{{ sl }}" style="min-width: 90px" onchange="this.form.submit()">
     </label>
+    {% if procurement %}
+        <label>
+            <span title="Заказ покрывает продажи за срок поставки + этот период — до следующего заказа товара хватит">Период до след. заказа, мес.</span>
+            <input type="number" name="rv" min="1" max="6" step="1" value="{{ rv }}" style="min-width: 90px" onchange="this.form.submit()">
+        </label>
+        <label>
+            <span>Остатки</span>
+            <select name="stock" onchange="this.form.submit()">
+                {% for s in snapshots %}<option value="{{ s.pk }}"{% if snapshot and s.pk == snapshot.pk %} selected{% endif %}>на {{ s.date|date:"d.m.Y" }}</option>{% endfor %}
+                <option value="0"{% if not snapshot %} selected{% endif %}>без остатков</option>
+            </select>
+        </label>
+    {% endif %}
     {% if runs %}
         <label>
             <span>Прогноз</span>
@@ -34,7 +47,8 @@
     {% endif %}
     <button type="submit" class="f7-btn f7-btn-red">Показать</button>
     <span class="f7-filters-period">
-        {% if run %}<button type="submit" formaction="{% url 'forecast_qty_export' %}" class="f7-dash-meta-btn" title="Выгрузка с текущими сроком поставки и уровнем сервиса из полей слева"><span class="material-symbols-outlined">download</span>Выгрузить в Excel</button>{% endif %}
+        {% if procurement %}<a href="{{ upload_url }}" class="f7-dash-meta-btn" title="Выбрать файл остатков из 1С и указать дату. Каждая загрузка хранится отдельным срезом."><span class="material-symbols-outlined">upload</span>Загрузить остатки</a>{% endif %}
+        {% if run %}<button type="submit" formaction="{% url 'forecast_qty_export' %}" class="f7-dash-meta-btn" title="{% if snapshot %}Первый лист — «К заказу»: только то, что надо заказать по остаткам на {{ snapshot.date|date:'d.m.Y' }}{% else %}Выгрузка с текущими сроком поставки и уровнем сервиса из полей слева{% endif %}"><span class="material-symbols-outlined">download</span>{% if snapshot %}Excel: к заказу{% else %}Выгрузить в Excel{% endif %}</button>{% endif %}
         {% if ladder_url %}<a href="{{ ladder_url }}" class="f7-dash-meta-btn" title="Заново разложить прогноз выручки по группам и артикулам. Нужно после переноса артикулов между группами. Срок поставки и уровень сервиса применяются сразу, без пересчёта."><span class="material-symbols-outlined">refresh</span>Пересобрать раскладку</a>{% endif %}
     </span>
 </form>
@@ -61,6 +75,26 @@
         {% if lt_warn %}<b>{{ lt_warn }}.</b>{% endif %}
     </div>
 
+    {% if procurement %}
+        {% if snapshot and order_tot %}
+            <div class="f7-callout">
+                <span class="material-symbols-outlined">shopping_cart</span>
+                <div>
+                    <b>По остаткам на {{ snapshot.date|date:"d.m.Y" }} нужно заказать {{ order_tot.n|num }} арт. — {{ order_tot.qty|num }} шт., ≈{{ order_tot.cost|mln }} ₽ по себестоимости.</b>
+                    Заказываем то, что вместе с товаром в пути опустилось до точки заказа, — на {{ lt }} мес. поставки + {{ rv }} мес. до следующего заказа.
+                    {% if order_tot.nocost %}<span class="f7-muted">У {{ order_tot.nocost|num }} арт. себестоимости нет — в сумму не вошли.</span>{% endif %}
+                    <span class="f7-muted">Кратность заказа пока не учитывается.</span>
+                </div>
+            </div>
+        {% elif not snapshot %}
+            <div class="f7-callout f7-callout-warn">
+                <span class="material-symbols-outlined">warehouse</span>
+                <div><b>Остатки не выбраны.</b> Загрузите остатки из 1С на дату — посчитаем, что и сколько заказать.</div>
+                <a href="{{ upload_url }}" class="f7-btn f7-btn-red">Загрузить остатки</a>
+            </div>
+        {% endif %}
+    {% endif %}
+
     {% if group_rows %}
         <div class="f7-card">
             <div class="f7-card-title">{{ series_label }}: по товарным группам
@@ -81,6 +115,11 @@
                         <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Сколько денег по последней себестоимости лежит в точке заказа.">Точка заказа<br>по с/с, ₽</span></th>
                     {% endif %}
                     <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Прогноз выручки группы за 6 месяцев, ₽.">Выручка, {{ horizon6 }} мес.</span></th>
+                    {% if snapshot %}
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Остаток на {{ snapshot.date|date:'d.m.Y' }} + товар в пути — по артикулам, которые в прогнозе (старые номера сложены на актуальный).">Доступно<br>+ в пути, шт.</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Сколько артикулов и штук заказать: те, у которых остаток с товаром в пути опустился до точки заказа.">Заказать:<br>арт. · шт.</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Сумма заказа по последней себестоимости.">Заказать<br>по с/с, ₽</span></th>
+                    {% endif %}
                     {% if procurement %}<th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Редкие позиции, которые не держим на складе: продажа за срок поставки маловероятна (ниже {{ stock_prob|pct:0 }}) или деталь дороже {{ max_price|rub }} ₽. Их выручка в прогнозе есть, но продаются они под заказ клиента.">Под заказ:<br>арт. · доля выручки</span></th>{% endif %}
                 </tr></thead>
                 <tbody>
@@ -99,6 +138,11 @@
                             <td class="f7-right">{{ r.rop_cost|mln }}</td>
                         {% endif %}
                         <td class="f7-right">{{ r.revenue6|mln }}</td>
+                        {% if snapshot %}
+                            <td class="f7-right">{{ r.position|num }}</td>
+                            <td class="f7-right">{% if r.buy_n %}<b>{{ r.buy_n|num }}</b> · {{ r.buy_qty|num }}{% else %}<span class="f7-muted">—</span>{% endif %}</td>
+                            <td class="f7-right">{% if r.buy_cost %}<b>{{ r.buy_cost|mln }}</b>{% else %}<span class="f7-muted">—</span>{% endif %}</td>
+                        {% endif %}
                         {% if procurement %}<td class="f7-right f7-muted">{{ r.order_n|num }} · {{ r.order_share|pct:0 }}</td>{% endif %}
                     </tr>
                 {% endfor %}
@@ -116,6 +160,11 @@
                         <td class="f7-right"><b>{{ tot.rop_cost|mln }}</b></td>
                     {% endif %}
                     <td class="f7-right"><b>{{ tot.revenue6|mln }}</b></td>
+                    {% if snapshot %}
+                        <td class="f7-right"><b>{{ tot.position|num }}</b></td>
+                        <td class="f7-right"><b>{{ tot.buy_n|num }} · {{ tot.buy_qty|num }}</b></td>
+                        <td class="f7-right"><b>{{ tot.buy_cost|mln }}</b></td>
+                    {% endif %}
                     {% if procurement %}<td class="f7-right"><b>{{ tot.order_n|num }} · {{ tot.order_share|pct:0 }}</b></td>{% endif %}
                 </tr>
                 </tbody>
@@ -149,6 +198,12 @@
                         <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Регулярный спрос: на срок поставки + страховой запас, вверх до целого. Редкий: держим 1–2 шт., только если продажа за срок поставки вероятнее {{ stock_prob|pct:0 }} и деталь не дороже {{ max_price|rub }} ₽; иначе — под заказ клиента. Остаток склад + в пути ниже точки — пора заказывать.">Точка<br>заказа</span></th>
                         <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Точка заказа × последняя себестоимость.">Точка заказа<br>по с/с, ₽</span></th>
                     {% endif %}
+                    {% if snapshot %}
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Остаток на {{ snapshot.date|date:'d.m.Y' }}, со старыми номерами.">Доступно</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Поступит — уже заказано и едет.">В пути</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Остаток + в пути не выше точки заказа → заказываем на {{ lt }} мес. поставки + {{ rv }} мес. до следующего заказа + страховой запас, за вычетом того, что есть и едет.">Заказать</span></th>
+                        <th class="f7-right"><span class="f7-tip f7-tip-left" data-tip="Заказать × последняя себестоимость.">Заказать<br>по с/с, ₽</span></th>
+                    {% endif %}
                 </tr></thead>
                 <tbody>
                 {% for r in item_rows %}
@@ -169,6 +224,12 @@
                             <td class="f7-right">{{ r.safety|num:1 }}</td>
                             <td class="f7-right"><span class="f7-num">{% if r.rop %}<b>{{ r.rop|num }}</b>{% if r.decision != "запас" %}<span class="f7-field-sub" title="Редкий спрос: шанс продажи за срок поставки {{ r.p_lt|pct:0 }}">мин. · {{ r.p_lt|pct:0 }}</span>{% endif %}{% else %}<span class="f7-order" title="Шанс, что спросят за срок поставки: {{ r.p_lt|pct:0 }}{% if r.decision == 'под заказ: дорогой' %}; дороже {{ max_price|rub }} ₽ — не держим{% endif %}. На складе не держим — везём под клиента.">{% if r.decision == 'под заказ: дорогой' %}под заказ ₽{% else %}под заказ{% endif %}</span><span class="f7-field-sub">шанс {{ r.p_lt|pct:0 }}</span>{% endif %}</span></td>
                             <td class="f7-right">{{ r.rop_cost|rub }}</td>
+                        {% endif %}
+                        {% if snapshot %}
+                            <td class="f7-right">{{ r.on_hand|num }}</td>
+                            <td class="f7-right f7-muted">{% if r.incoming %}{{ r.incoming|num }}{% else %}—{% endif %}</td>
+                            <td class="f7-right">{% if r.order %}<b>{{ r.order|num }}</b>{% else %}<span class="f7-muted">—</span>{% endif %}</td>
+                            <td class="f7-right">{% if r.order_cost %}{{ r.order_cost|rub }}{% else %}<span class="f7-muted">—</span>{% endif %}</td>
                         {% endif %}
                     </tr>
                 {% endfor %}

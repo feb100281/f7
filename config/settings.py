@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "sales",
     "marts",
     "forecast",
+    "stock",
     "django_json_widget",
     "django.contrib.admin",
     "django.contrib.auth",

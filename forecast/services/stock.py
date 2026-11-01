@@ -17,6 +17,14 @@ CV — по 12 полным месяцам факта, нулевые месяц
 «под заказ»; дороже RARE_MAX_PRICE — всегда «под заказ: дорогой». Прогноз в 0,3 шт. — это не треть
 детали на складе, а 26% шанс, что её спросят: такие везут под клиента.
 z — из уровня сервиса: 95% → 1,64 (в 95% случаев запаса хватит до прихода поставки).
+
+Заказ по остаткам (срез StockSnapshot, остатки старых номеров — на актуальный):
+    позиция   = доступно + поступит (в пути)
+    «запас»   — позиция ≤ точки заказа → заказать = прогноз на (срок поставки + период до следующего
+                заказа) + страховой запас − позиция, вверх до целого; иначе 0
+    «мин.»    — заказать = точка заказа (1–2 шт.) − позиция, не меньше 0
+    «под заказ» — 0: везём под конкретного клиента
+Кратность заказа пока не учитывается (нет данных от клиента).
 """
 
 from __future__ import annotations
@@ -38,6 +46,7 @@ NEW_FEW = "новинка: мало данных"
 NO_SAFETY = ("редкий", "нет продаж", NEW_FEW)   # без страхового запаса, обычное округление
 STOCK_PROB = 0.5          # редкий спрос: держим штуку, если вероятность продажи за срок поставки не ниже
 RARE_MAX_PRICE = 100_000  # редкий спрос дороже этой цены — только под заказ клиента
+REVIEW = 1             # период до следующего заказа, мес.: заказ покрывает срок поставки + этот период
 
 # Решение по артикулу (то, что видит закупка вместо «прочерка»)
 DEC_STOCK = "запас"              # регулярный спрос: точка заказа с страховым запасом
@@ -72,6 +81,17 @@ def decide(cls: str, q_lt: float, safety: float, price, prob_min: float = STOCK_
     if p >= prob_min:
         return max(1, int(math.floor(q_lt + 0.5))), DEC_MIN
     return 0, DEC_ORDER
+
+
+def order_qty(decision: str | None, rop: int | None, q_ltr: float, safety: float, position: float) -> int:
+    """Сколько заказать при данной позиции (доступно + в пути)."""
+    if decision == DEC_STOCK:
+        if position > rop:
+            return 0
+        return max(0, math.ceil(q_ltr + safety - position - 1e-9))
+    if decision == DEC_MIN:
+        return max(0, math.ceil(rop - position - 1e-9))
+    return 0
 
 
 def z_value(service_level: float) -> float:
@@ -110,8 +130,10 @@ def horizon(run: ForecastRun) -> Horizon:
 def item_rows(run: ForecastRun, series_names: list[str], lead_time: int = LEAD_TIME,
               service_level: float = SERVICE_LEVEL, group_id: int | None = None,
               procurement: bool = True, prob_min: float = STOCK_PROB,
-              max_price: float = RARE_MAX_PRICE) -> tuple[list[dict], Horizon]:
-    """Строка на артикул: прогноз по месяцам и рядам, статистика спроса, запас, точка заказа."""
+              max_price: float = RARE_MAX_PRICE, position: dict | None = None,
+              review: int = REVIEW) -> tuple[list[dict], Horizon]:
+    """Строка на артикул: прогноз по месяцам и рядам, статистика спроса, запас, точка заказа.
+    position — {актуальный номер: (доступно, поступит)} из среза остатков: тогда ещё и «заказать»."""
     hz = horizon(run)
     qs = run.items.filter(series__in=series_names)
     if group_id is not None:
@@ -135,6 +157,7 @@ def item_rows(run: ForecastRun, series_names: list[str], lead_time: int = LEAD_T
     stats = ItemDemandStats.objects.in_bulk(list(acc))
     z = z_value(service_level)
     lt_months = hz.full[:lead_time]
+    ltr_months = hz.full[:lead_time + review]
     rows = []
     for iid, a in acc.items():
         item, st = items.get(iid), stats.get(iid)
@@ -153,6 +176,13 @@ def item_rows(run: ForecastRun, series_names: list[str], lead_time: int = LEAD_T
         if decision and decision != DEC_STOCK:
             safety = 0.0
         cost = st.last_cost if st else None
+        on_hand = incoming = pos = q_ltr = order = order_cost = None
+        if position is not None and procurement:
+            on_hand, incoming = position.get(iid, (0.0, 0.0))
+            pos = on_hand + incoming
+            q_ltr = sum(a["by_month"].get(m, 0.0) for m in ltr_months)
+            order = order_qty(decision, rop, q_ltr, safety, pos)
+            order_cost = order * cost if cost else None
         rows.append({
             **a, "item": item, "stats": st,
             "rest": a["by_month"].get(hz.partial, 0.0) if hz.partial else 0.0,
@@ -162,6 +192,8 @@ def item_rows(run: ForecastRun, series_names: list[str], lead_time: int = LEAD_T
             "decision": decision, "p_lt": sale_prob(q_lt),
             "cost": cost, "rop_cost": rop * cost if (rop is not None and cost) else None,
             "price_label": PriceSource(a["price_source"]).label if a["price_source"] else "",
+            "on_hand": on_hand, "incoming": incoming, "position": pos, "q_ltr": q_ltr,
+            "order": order, "order_cost": order_cost,
         })
     rows.sort(key=lambda r: -r["revenue6"])
     return rows, hz

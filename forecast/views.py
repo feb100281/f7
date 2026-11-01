@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 import json
 from collections import defaultdict
 from datetime import date
@@ -400,8 +402,26 @@ def _stock_params(request):
                                        .replace(",", ".")))) / 100
     except (TypeError, ValueError):
         sl = stock.SERVICE_LEVEL
-    request.session["f7_stock"] = {"lt": lt, "sl": round(sl * 100, 1)}
-    return lt, sl
+    try:
+        rv = max(1, min(6, int(request.GET.get("rv") or saved.get("rv") or stock.REVIEW)))
+    except (TypeError, ValueError):
+        rv = stock.REVIEW
+    request.session["f7_stock"] = {"lt": lt, "sl": round(sl * 100, 1), "rv": rv}
+    return lt, sl, rv
+
+
+def _snapshot(request):
+    """Срез остатков: ?stock=<id>, «0» — без остатков; по умолчанию — последний."""
+    from stock.models import StockSnapshot
+
+    v = request.GET.get("stock", "")
+    if v == "0":
+        return None
+    if v.isdigit():
+        snap = StockSnapshot.objects.filter(pk=v).first()
+        if snap:
+            return snap
+    return StockSnapshot.objects.first()
 
 
 def _qty_context(request):
@@ -414,16 +434,22 @@ def _qty_context(request):
     run = run or (runs[0] if runs else None)
     group_id = request.GET.get("group")
     group_id = int(group_id) if group_id and group_id.isdigit() else None
-    lt, sl = _stock_params(request)
-    return run, runs, series, group_id, lt, sl
+    lt, sl, rv = _stock_params(request)
+    return run, runs, series, group_id, lt, sl, rv
 
 
 def qty(request):
     from forecast.services import stock
+    from stock.models import StockSnapshot
+    from stock.services.load import family_position
 
-    run, runs, series, group_id, lt, sl = _qty_context(request)
+    run, runs, series, group_id, lt, sl, rv = _qty_context(request)
     procurement = series == Series.TOTAL
-    ctx = {"run": run, "runs": runs, "series": series, "series_label": Series(series).label,
+    snapshot = _snapshot(request) if procurement else None
+    back = request.path + "?" + urlencode([(k, v) for k, v in request.GET.items() if k != "stock"])
+    ctx = {"snapshots": list(StockSnapshot.objects.all()[:50]), "snapshot": snapshot, "rv": rv,
+           "upload_url": reverse("admin:stock_stocksnapshot_add") + "?" + urlencode({"next": back}),
+           "run": run, "runs": runs, "series": series, "series_label": Series(series).label,
            "groups_list": ItemGroup.objects.order_by("sort", "name"), "group_id": group_id,
            "lt": lt, "sl": round(sl * 100, 1), "z": stock.z_value(sl), "rare": stock.RARE_MONTHS,
            "procurement": procurement, "ladder_url": _job_url(request, "forecast_ladder"),
@@ -431,7 +457,8 @@ def qty(request):
     if not run or not run.items.exists():
         return _render(request, "qty", "Прогноз в штуках", {**ctx, "empty": True})
 
-    rows, hz = stock.item_rows(run, stock.series_names(series), lt, sl, group_id=group_id, procurement=procurement)
+    rows, hz = stock.item_rows(run, stock.series_names(series), lt, sl, group_id=group_id, procurement=procurement,
+                               position=family_position(snapshot) if snapshot else None, review=rv)
     full = hz.full
     m3, m6, mlt = full[:3], full[:6], full[:lt]
     span = lambda ms: f"{month_label(ms[0])} – {month_label(ms[-1])}" if ms else ""  # noqa: E731
@@ -440,12 +467,21 @@ def qty(request):
     ctx["horizon6"] = len(m6)
     if len(full) < lt:
         ctx["lt_warn"] = f"прогноз есть только на {len(full)} мес. — срок поставки урезан"
+    elif snapshot and len(full) < lt + rv:
+        ctx["lt_warn"] = (f"прогноз есть только на {len(full)} мес. — заказ считается на {len(full)} мес., "
+                          f"а не на срок поставки + период ({lt + rv})")
+    if snapshot:
+        todo = [r for r in rows if r["order"]]
+        ctx["order_tot"] = {"n": len(todo), "qty": sum(r["order"] for r in todo),
+                            "cost": sum(r["order_cost"] or 0 for r in todo),
+                            "nocost": sum(1 for r in todo if not r["cost"])}
     kinds = SERIES_KINDS[series]
 
     keys = ("rest", "q3", "q6", "q_lt", "safety", "revenue6")
     if group_id is None:
         acc = defaultdict(lambda: {**{k: 0.0 for k in keys}, "rop": 0, "rop_cost": 0.0, "n": 0, "regular": 0, "new": 0,
-                                   "order_n": 0, "order_rev": 0.0})
+                                   "order_n": 0, "order_rev": 0.0, "buy_n": 0, "buy_qty": 0, "buy_cost": 0.0,
+                                   "on_hand": 0.0, "incoming": 0.0})
         for r in rows:
             a = acc[r["group_id"]]
             for k in keys:
@@ -458,6 +494,13 @@ def qty(request):
                 if r["decision"] in (stock.DEC_ORDER, stock.DEC_EXPENSIVE):
                     a["order_n"] += 1
                     a["order_rev"] += r["revenue6"]
+                if snapshot:
+                    a["on_hand"] += r["on_hand"]
+                    a["incoming"] += r["incoming"]
+                    if r["order"]:
+                        a["buy_n"] += 1
+                        a["buy_qty"] += r["order"]
+                        a["buy_cost"] += r["order_cost"] or 0
             if r["demand"] not in stock.NO_SAFETY:
                 a["regular"] += 1
         ly = _ly_qty(kinds, m6, "item__group", run.families)
@@ -469,8 +512,11 @@ def qty(request):
             for gid, a in acc.items()), key=lambda r: -r["revenue6"])
         for r in group_rows:
             r["order_share"] = r["order_rev"] / r["revenue6"] if r["revenue6"] else 0
-        tot = {k: sum(r[k] for r in group_rows) for k in (*keys, "rop", "rop_cost", "n", "regular", "order_n", "order_rev")}
+            r["position"] = r["on_hand"] + r["incoming"]
+        tot = {k: sum(r[k] for r in group_rows) for k in (*keys, "rop", "rop_cost", "n", "regular", "order_n", "order_rev",
+                                                         "buy_n", "buy_qty", "buy_cost", "on_hand", "incoming")}
         tot["order_share"] = tot["order_rev"] / tot["revenue6"] if tot["revenue6"] else 0
+        tot["position"] = tot["on_hand"] + tot["incoming"]
         tot["ly"] = sum(r["ly"] or 0 for r in group_rows)
         tot["yoy"] = _ratio(tot["q6"], tot["ly"])
         ctx.update({"group_rows": group_rows, "tot": tot})
@@ -481,7 +527,8 @@ def qty(request):
             r["ly"] = ly.get(r["item_id"])
             r["olds"] = olds.get(r["item_id"], [])
         ctx.update({"item_rows": rows, "group": ItemGroup.objects.filter(pk=group_id).first(),
-                    "tot": {k: sum((r[k] or 0) for r in rows) for k in (*keys, "rop", "rop_cost")}})
+                    "tot": {k: sum((r[k] or 0) for r in rows) for k in (*keys, "rop", "rop_cost", "on_hand", "incoming",
+                                                                       "order", "order_cost")}})
 
     ctx["export_url"] = reverse("forecast_qty_export") + "?" + request.GET.urlencode()
     return _render(request, "qty", "Прогноз в штуках", ctx)
@@ -492,10 +539,10 @@ def qty_export(request):
 
     from forecast.services.export import build_workbook
 
-    run, _, series, _, lt, sl = _qty_context(request)
+    run, _, series, _, lt, sl, rv = _qty_context(request)
     if not run:
         return HttpResponse("Прогноза ещё нет", status=404)
-    wb, filename = build_workbook(run, lt=lt, service_level=sl)
+    wb, filename = build_workbook(run, lt=lt, service_level=sl, snapshot=_snapshot(request), review=rv)
     response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     response["Content-Disposition"] = f"attachment; filename=\"{filename}\""
     wb.save(response)
